@@ -1,0 +1,11 @@
+name: frontend_poor_match
+resume: classic
+page_limit: 2
+job: |
+  Senior Frontend Engineer
+  Build our design system and customer dashboard.
+  Must have: TypeScript, React, Next.js, GraphQL, accessibility, CSS.
+  Nice to have: Node.js, Storybook, Figma.
+canaries: [TypeScript, React, Next.js, GraphQL, Storybook, Figma, Node.js]
+expect:
+  min_changes: 0

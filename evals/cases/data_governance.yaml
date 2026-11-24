@@ -1,0 +1,16 @@
+name: data_governance_partial_match
+resume: classic
+page_limit: 2
+job: |
+  Lead, Data Governance and Quality
+  Own the enterprise data governance program across analytics and AI.
+  Required qualifications:
+  - Data governance, data quality, and data contracts at scale
+  - Hands-on with Great Expectations, dbt, and Airflow
+  - Collibra or Alation catalog experience
+  - Stakeholder management and cross-functional leadership
+  - GDPR and privacy compliance
+  Preferred: Unity Catalog, Snowflake, Power BI.
+canaries: [Collibra, Alation, Unity Catalog, Snowflake, Power BI, GDPR]
+expect:
+  min_changes: 0

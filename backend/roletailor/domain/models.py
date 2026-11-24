@@ -192,3 +192,15 @@ class TailoringResult(BaseModel):
     scores_after: Scores
     feedback: HiringManagerFeedback | None = None
     total_cost_usd: float = 0.0
+
+
+class ClaimVerdict(BaseModel):
+    block_id: str
+    supported: bool
+    unsupported_claims: list[str] = Field(default_factory=list)
+
+
+class ClaimCheck(BaseModel):
+    """Output of the verify_claims stage: is each rewrite entailed by the original?"""
+
+    results: list[ClaimVerdict] = Field(default_factory=list)
