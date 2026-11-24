@@ -46,6 +46,26 @@ class Settings(BaseSettings):
     max_upload_bytes: int = 10 * 1024 * 1024
     default_page_limit: int = 2
 
+    # Platform (API, worker, migrations)
+    # Schema owner connection used only by db/migrate.py.
+    migration_database_url: str = "postgresql://rt_owner:rt_owner@localhost:5432/roletailor"
+    # Public URLs: the API (share links, local signed URLs) and the web app (Stripe redirects).
+    api_base_url: str = "http://localhost:8000"
+    app_base_url: str = "http://localhost:3000"
+    # HMAC key for LocalStorage signed URLs. Must be set outside dev.
+    secret_key: str = "dev-insecure-secret-change-me"
+    s3_endpoint_url: str | None = None  # e.g. MinIO in dev; None uses AWS
+    log_level: str = "INFO"
+    # Fixed-window rate limits, requests per minute per client.
+    rate_limit_auth_per_minute: int = 10
+    rate_limit_generation_per_minute: int = 20
+    # Job URL fetching
+    job_fetch_timeout_seconds: float = 10.0
+    job_fetch_max_bytes: int = 2 * 1024 * 1024
+    share_link_max_hours: int = 24 * 30
+    celery_task_always_eager: bool = False
+    worker_metrics_port: int = 9101  # 0 disables the worker's Prometheus endpoint
+
 
 @lru_cache
 def get_settings() -> Settings:

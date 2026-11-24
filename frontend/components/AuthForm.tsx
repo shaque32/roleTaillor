@@ -25,7 +25,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
     const fullName = String(fd.get("full_name") ?? "").trim();
     const errs: Record<string, string> = {};
     if (!/^\S+@\S+\.\S+$/.test(email)) errs.email = "Enter a valid email address.";
-    if (mode === "register" && password.length < 8) errs.password = "Use at least 8 characters.";
+    if (mode === "register" && password.length < 10) errs.password = "Use at least 10 characters.";
     if (mode === "register" && !fullName) errs.full_name = "Enter your name.";
     setFieldErrors(errs);
     if (Object.keys(errs).length) return;
@@ -69,7 +69,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
           label="Password"
           autoComplete={mode === "login" ? "current-password" : "new-password"}
           required
-          hint={mode === "register" ? "At least 8 characters." : undefined}
+          hint={mode === "register" ? "At least 10 characters." : undefined}
           error={fieldErrors.password}
         />
         <Button type="submit" className="w-full" loading={busy}>

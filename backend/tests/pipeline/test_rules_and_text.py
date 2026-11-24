@@ -36,7 +36,8 @@ def test_faithful_terminology_alignment_passes():
 
 
 def test_invented_metric_is_blocked():
-    assert "facts.numbers" in rules("Built ML features in Spark that lifted conversion 12% across 3 markets, saving $400K.")
+    new = "Built ML features in Spark that lifted conversion 12% across 3 markets, saving $400K."
+    assert "facts.numbers" in rules(new)
 
 
 def test_invented_tool_is_blocked_in_bullets():
@@ -51,9 +52,11 @@ def test_fact_inventory_allows_known_tool_in_summary_only():
 
 
 def test_unsupported_jd_keyword_is_blocked():
-    assert "facts.keywords" in rules("Built ML features in Spark with A/B testing that lifted conversion 12% in 3 markets.")
+    new = "Built ML features in Spark with A/B testing that lifted conversion 12% in 3 markets."
+    assert "facts.keywords" in rules(new)
 
 
 def test_length_budget_and_banned_phrases():
     assert "layout.length" in rules("Built ML features.")
-    assert "authenticity.phrases" in rules("Spearheaded ML features in Spark that lifted conversion 12% across 3 markets.")
+    new = "Spearheaded ML features in Spark that lifted conversion 12% across 3 markets."
+    assert "authenticity.phrases" in rules(new)

@@ -1,0 +1,82 @@
+# Local stack: PostgreSQL + pgvector, Redis, migrations, API, worker and web app.
+#   cp .env.example .env && docker compose up --build
+x-backend: &backend
+  build:
+    context: .
+    dockerfile: backend/Dockerfile
+  env_file: .env
+  environment:
+    RT_DATABASE_URL: postgresql+psycopg://rt_app:rt_app@postgres:5432/roletailor
+    RT_MIGRATION_DATABASE_URL: postgresql://rt_owner:rt_owner@postgres:5432/roletailor
+    RT_REDIS_URL: redis://redis:6379/0
+  volumes:
+    - files:/data/files
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+    migrate:
+      condition: service_completed_successfully
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    ports: ["5432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d roletailor"]
+      interval: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 20
+
+  migrate:
+    <<: *backend
+    command: ["python", "db/migrate.py"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    <<: *backend
+    ports: ["8000:8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
+      interval: 10s
+      retries: 10
+
+  worker:
+    <<: *backend
+    command: ["sh", "-c", "mkdir -p $$PROMETHEUS_MULTIPROC_DIR && exec celery -A roletailor.worker.celery_app worker --loglevel=INFO --concurrency=4"]
+    environment:
+      RT_DATABASE_URL: postgresql+psycopg://rt_app:rt_app@postgres:5432/roletailor
+      RT_REDIS_URL: redis://redis:6379/0
+      PROMETHEUS_MULTIPROC_DIR: /tmp/prometheus
+    ports: ["9101:9101"]
+
+  frontend:
+    build:
+      context: ./frontend
+    environment:
+      API_BASE_URL: http://api:8000/v1
+      COOKIE_SECURE: "false"
+    ports: ["3000:3000"]
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  files:
