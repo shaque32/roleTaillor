@@ -302,9 +302,20 @@ def test_refund_racing_settlement_is_not_lost(client, exhausted_user):
                      " amount_minor) VALUES (:org, :pi, 'succeeded', 'USD', 50)"),
                 {"org": user.org_id, "pi": intent},
             )
+            holder = conn.execute(text("SELECT pg_backend_pid()")).scalar_one()
             pending = pool.submit(send, client, refund)
-            time.sleep(0.5)
-            assert not pending.done()  # blocked on the uncommitted row
+            # Commit only once the refund's session is really waiting on this transaction.
+            deadline = time.monotonic() + 10
+            blocked = 0
+            while not blocked and time.monotonic() < deadline:
+                with db.global_tx() as probe:
+                    blocked = probe.execute(
+                        text("SELECT count(*) FROM pg_stat_activity WHERE :pid = ANY(pg_blocking_pids(pid))"),
+                        {"pid": holder},
+                    ).scalar_one()
+                if not blocked:
+                    time.sleep(0.05)
+            assert blocked == 1 and not pending.done()
         assert pending.result(timeout=10).json() == {"status": "processed"}
     assert user.get("/v1/billing/status").json()["pay_per_use_credits"] == 0
     assert count(user.org_id, "SELECT count(*) FROM payments WHERE stripe_payment_intent_id = :pi"
