@@ -137,27 +137,49 @@ def check_document(texts: dict[str, str], bullets_by_entry: list[list[str]],
     return out
 
 
+_STOP = {"about", "across", "their", "there", "these", "those", "which", "while", "within", "would",
+         "years", "experience", "strong", "ability", "including", "required", "preferred", "skills"}
+
+
+def _job_vocabulary(job: JobAnalysis) -> set[str]:
+    """Content words the job uses: its title, responsibilities, and keywords."""
+    parts = [job.title or "", *job.responsibilities]
+    for k in job.keywords:
+        parts += [k.term, *k.synonyms]
+    return {w for p in parts for w in norm(p).split() if len(w) >= 5 and w not in _STOP}
+
+
 def has_gain(original: str, new_text: str, job: JobAnalysis) -> bool:
-    """True when an edit measurably helps this job: it uses a job keyword in the job's own
-    wording that the line lacked, shows one more job keyword, or moves the first job
-    keyword earlier. Edits that only reshuffle or reword are noise in the candidate's
-    review and a risk to their meaning, so the pipeline keeps the original instead.
+    """False only for edits that do nothing for this job: pure rewording or reshuffling
+    that neither brings in the job's language nor moves it forward. Those are noise in the
+    candidate's review and a risk to their meaning, so the pipeline keeps the original.
+
+    An edit counts as a gain when it does any of these:
+    - uses a job keyword in the job's own wording that the line lacked;
+    - shows one more job keyword (by term or synonym);
+    - uses a word from the job's title, responsibilities, or keywords that the line lacked;
+    - moves any job keyword clearly earlier in the line.
+    Truthfulness is not judged here; the fact gates and the claim verifier do that.
     With no job keywords to measure against, every edit is allowed through."""
     if not job.keywords:
         return True
     if any(contains_term(new_text, k.term) and not contains_term(original, k.term) for k in job.keywords):
         return True
+    forms = [[k.term, *k.synonyms] for k in job.keywords]
+    if sum(contains_any(new_text, f) for f in forms) > sum(contains_any(original, f) for f in forms):
+        return True
+    old_words, new_words = set(norm(original).split()), set(norm(new_text).split())
+    if (new_words - old_words) & _job_vocabulary(job):
+        return True
 
-    def shown(text: str) -> int:
-        return sum(contains_any(text, [k.term, *k.synonyms]) for k in job.keywords)
-
-    def first(text: str) -> int | None:
+    def position(text: str, f: list[str]) -> int | None:
         t = norm(text)
-        hits = [m.start() for k in job.keywords for f in [k.term, *k.synonyms] if norm(f)
-                for m in [re.search(rf"(?<![\w+#]){re.escape(norm(f))}(?![\w+#])", t)] if m]
+        hits = [m.start() for x in f if norm(x)
+                for m in [re.search(rf"(?<![\w+#]){re.escape(norm(x))}(?![\w+#])", t)] if m]
         return min(hits) if hits else None
 
-    if shown(new_text) > shown(original):
-        return True
-    a, b = first(original), first(new_text)
-    return a is not None and b is not None and b < a - 3
+    for f in forms:
+        a, b = position(original, f), position(new_text, f)
+        if a is not None and b is not None and b < a - 8:
+            return True
+    return False

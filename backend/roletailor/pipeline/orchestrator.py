@@ -140,7 +140,7 @@ def _rewrite_and_validate(gateway: Gateway, *, document: ParsedDocument, plan, s
     accepted: dict[str, BlockRewrite] = {}
     log_by_rule: dict[str, list[Violation]] = defaultdict(list)
     verifier_down = False
-    no_gain: list[str] = []
+    no_gain: dict[str, str] = {}
     context = {"job_title": job.title, "positioning": plan.positioning,
                "tone": prefs.get("tone"), "technical_depth": prefs.get("technical_depth")}
     router = gateway.router
@@ -170,7 +170,7 @@ def _rewrite_and_validate(gateway: Gateway, *, document: ParsedDocument, plan, s
             if clean(r.new_text) == clean(by_id[bid].text):
                 continue  # model chose to keep it; nothing to validate
             if bid not in focus and not has_gain(by_id[bid].text, r.new_text, job):
-                no_gain.append(bid)
+                no_gain[bid] = r.new_text
                 continue  # cosmetic edit: keep the original, do not spend a verify call
             ctx = BlockContext(block_id=bid, original=by_id[bid].text, scope=scopes[bid],
                                target_keywords=plans[bid].target_keywords)
@@ -208,10 +208,11 @@ def _rewrite_and_validate(gateway: Gateway, *, document: ParsedDocument, plan, s
 
     if verifier_down and not accepted:
         raise AIUnavailable(f"{it}:verify_claims", "claim verifier unavailable")
-    for bid in no_gain:
-        log_by_rule["value.no_gain"].append(Violation(
-            rule_key="value.no_gain", block_id=bid, severity="warn",
-            detail="edit did not add, surface, or lead with a job keyword; original kept"))
+    for bid, proposed in no_gain.items():
+        if bid not in accepted:  # a later round may have produced a useful edit
+            log_by_rule["value.no_gain"].append(Violation(
+                rule_key="value.no_gain", block_id=bid, severity="warn",
+                detail=f"kept original; proposed edit added nothing for this job: {proposed[:300]}"))
     return accepted, log_by_rule, sorted(pending)
 
 
@@ -267,7 +268,8 @@ def _rule_outcomes(log_by_rule: dict[str, list[Violation]], dropped: list[str],
     out.append(ValidationOutcome(
         rule_key="value.no_gain", rule_version=RULE_VERSION, passed=True,
         score=round(100.0 * (1 - len(skipped) / planned), 2) if planned else 100.0,
-        details={"kept_original": [v.block_id for v in skipped]}))
+        details={"kept_original": [v.block_id for v in skipped],
+                 "proposals": {v.block_id: v.detail.split(": ", 1)[-1] for v in skipped}}))
     out.append(ValidationOutcome(
         rule_key="pipeline.coverage", rule_version=RULE_VERSION, passed=True,
         details={"planned_blocks": planned, "reverted_blocks": dropped}))

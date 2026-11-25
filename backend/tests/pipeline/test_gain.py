@@ -33,3 +33,14 @@ def test_closing_full_stop_follows_the_original():
     assert _match_ending("Built the thing.", "Built the service") == "Built the service."
     assert _match_ending("Python, SQL", "SQL, Python.") == "SQL, Python"
     assert _match_ending("Built it.", "Built it well.") == "Built it well."
+
+
+def test_job_language_and_moving_any_keyword_forward_are_gains():
+    job = JobAnalysis(title="Controller", responsibilities=["Own the monthly close and consolidation"],
+                      keywords=[Keyword(term="GAAP"), Keyword(term="audit")])
+    assert has_gain("Ran month-end for 4 entities under GAAP.",
+                    "Ran the monthly close for 4 entities under GAAP.", job)
+    assert has_gain("Built schedules for 4 entities and supported the external audit under GAAP.",
+                    "Supported the external audit under GAAP and built schedules for 4 entities.", job)
+    assert not has_gain("Ran month-end for 4 entities under GAAP.",
+                        "Handled month-end for 4 entities under GAAP.", job)

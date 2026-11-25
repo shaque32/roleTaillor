@@ -231,10 +231,13 @@ def aggregate(rows: list[dict]) -> dict:
         "fabrications": sum(len(r["fabrications"]) for r in ok),
         "fabrication_rate": round(sum(bool(r["fabrications"]) for r in ok) / len(ok), 4) if ok else 0.0,
         "mean_changes": round(statistics.mean(r["changes"] for r in ok), 2) if ok else 0.0,
+        "mean_reverted": round(statistics.mean(r["reverted"] for r in ok), 2) if ok else 0.0,
         "mean_coverage_before": round(statistics.mean(r["coverage_before"] for r in ok), 2) if ok else 0.0,
         "mean_coverage_after": round(statistics.mean(r["coverage_after"] for r in ok), 2) if ok else 0.0,
         "mean_coverage_gain": round(statistics.mean(r["coverage_after"] - r["coverage_before"] for r in ok), 2)
         if ok else 0.0,
+        "mean_planned_blocks": round(statistics.mean(r["planned_blocks"] for r in ok), 2) if ok else 0.0,
+        "zero_change_rate": round(sum(r["changes"] == 0 for r in ok) / len(ok), 3) if ok else 0.0,
         "mean_no_gain_skipped": round(statistics.mean(r["no_gain_skipped"] for r in ok), 2) if ok else 0.0,
         "mean_exact_term_gain": round(statistics.mean(
             r["exact_coverage_after"] - r["exact_coverage_before"] for r in ok), 2) if ok else 0.0,
@@ -285,7 +288,8 @@ def markdown(report: dict) -> str:
     lines = [f"# RoleTailor eval report, {report['created_at']}", "",
              f"Mode: **{report['mode']}**. Cases: {report['case_count']}. Reps: {report['reps']}. "
              f"Behaviour fingerprint: `{report['fingerprint']}`. Total spend: ${report['total_spend_usd']:.4f}.", ""]
-    cols = ["pass_rate", "fabrication_cases", "errors", "mean_changes", "mean_no_gain_skipped",
+    cols = ["pass_rate", "fabrication_cases", "errors", "mean_planned_blocks", "mean_changes", "zero_change_rate",
+            "mean_no_gain_skipped", "mean_reverted",
             "mean_exact_term_gain",
             "expected_gap_recall", "plan_escalation_rate", "rewrite_escalation_rate",
             "length_outlier_blocks", "mean_cost_usd", "p95_cost_usd", "p50_latency_s",
@@ -315,6 +319,11 @@ def markdown(report: dict) -> str:
             if r.get("expected_gaps_missed"):
                 extra += f" missed={r['expected_gaps_missed']} reported={r['gaps_reported']}"
             lines.append(f"- {r['case']} ({r['scenario']}): {why}{extra}")
+        skipped = [(r["case"], e) for r in report["configs"][n]["results"]
+                   for e in r.get("no_gain_examples", [])][:8]
+        if skipped:
+            lines += ["", "Edits dropped as cosmetic (first 8):"]
+            lines += [f"- {c}: `{e['before'][:110]}` -> `{e['proposed'][:110]}`" for c, e in skipped]
         flagged = [r for r in report["configs"][n]["results"]
                    if r.get("judge", {}).get("truthfulness", 5) < 4]
         if flagged:

@@ -23,6 +23,8 @@ class CaseMetrics:
     changes: int = 0
     reverted: int = 0
     no_gain_skipped: int = 0  # planned edits dropped as cosmetic by the value gate
+    no_gain_examples: list[dict] = field(default_factory=list)
+    planned_blocks: int = 0
     coverage_before: float = 0.0
     coverage_after: float = 0.0
     # Share of job keywords present in the job's own wording (no synonym credit). The
@@ -73,6 +75,10 @@ def compute(case: EvalCase, original: dict[str, str], result: TailoringResult, *
     m.reverted = len(cov.details["reverted_blocks"]) if cov else 0
     ng = next((v for v in result.validations if v.rule_key == "value.no_gain"), None)
     m.no_gain_skipped = len(ng.details["kept_original"]) if ng else 0
+    if ng:
+        m.no_gain_examples = [{"before": original.get(b, ""), "proposed": t}
+                              for b, t in list(ng.details.get("proposals", {}).items())[:5]]
+    m.planned_blocks = len(result.plan.block_plans)
     m.gaps_reported = list(result.plan.gaps)
     if live:
         # "CPA license" or "Active CPA license" reports the CPA gap; exact match is too strict.
