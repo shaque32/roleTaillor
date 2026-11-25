@@ -347,8 +347,11 @@ def strip_external_relationships(data: bytes) -> bytes:
         raise InvalidDocument("not a DOCX (zip) file") from exc
     replaced: dict[str, bytes] = {}
     for info in source.infolist():
-        if not info.filename.endswith(".rels") or info.file_size > MAX_PART_BYTES:
+        if not info.filename.endswith(".rels"):
             continue
+        if info.file_size > MAX_PART_BYTES:
+            # Passing it through unfiltered would hand the converter unchecked targets.
+            raise InvalidDocument("relationship part too large")
         root = parse_xml(source.read(info.filename))
         doomed = [
             rel for rel in root.iter(f"{{{PKG_REL_NS}}}Relationship")

@@ -47,3 +47,15 @@ def test_external_fetches_are_removed_and_hyperlinks_kept(sample_docx: bytes):
 
 def test_clean_documents_are_returned_unchanged(sample_docx: bytes):
     assert strip_external_relationships(sample_docx) is sample_docx
+
+
+def test_oversized_relationship_parts_are_rejected(sample_docx: bytes, monkeypatch):
+    from roletailor.documents import _ooxml
+    from roletailor.documents.errors import InvalidDocument
+
+    hostile = _with_rels(sample_docx, (
+        f'<Relationship Id="rIdX1" Type="{OFFICE}/image" Target="file:///etc/hostname" TargetMode="External"/>'
+    ))
+    monkeypatch.setattr(_ooxml, "MAX_PART_BYTES", 64)
+    with pytest.raises(InvalidDocument, match="relationship part too large"):
+        strip_external_relationships(hostile)

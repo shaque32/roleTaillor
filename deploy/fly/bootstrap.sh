@@ -78,9 +78,16 @@ else
 fi
 
 # Lets the API believe the browser address the web app relays (per-visitor rate limits).
-if flyctl secrets list --app "$API" 2>/dev/null | grep -q 'RT_PROXY_SHARED_SECRET'; then
-  echo "RT_PROXY_SHARED_SECRET already set (to rotate: set it on $API and API_PROXY_SECRET on $WEB to one new value)"
+# Both apps must hold the same value, so a half-set pair is regenerated on both.
+has_api_proxy=0; has_web_proxy=0
+flyctl secrets list --app "$API" 2>/dev/null | grep -q 'RT_PROXY_SHARED_SECRET' && has_api_proxy=1
+flyctl secrets list --app "$WEB" 2>/dev/null | grep -q 'API_PROXY_SECRET' && has_web_proxy=1
+if [[ $has_api_proxy -eq 1 && $has_web_proxy -eq 1 ]]; then
+  echo "RT_PROXY_SHARED_SECRET and API_PROXY_SECRET already set (to rotate: set both to one new value)"
 else
+  if [[ $has_api_proxy -ne $has_web_proxy ]]; then
+    echo "proxy secret is set on only one of $API and $WEB; staging a new value on both"
+  fi
   PROXY_SECRET="$(openssl rand -hex 32)"
   printf 'RT_PROXY_SHARED_SECRET=%s\n' "$PROXY_SECRET" | flyctl secrets import --stage --app "$API"
   printf 'API_PROXY_SECRET=%s\n' "$PROXY_SECRET" | flyctl secrets import --stage --app "$WEB"

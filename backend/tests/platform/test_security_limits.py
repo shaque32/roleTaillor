@@ -116,3 +116,18 @@ def test_metrics_hidden_from_the_public_edge(client: TestClient, settings):
 def test_readiness_reports_tenant_isolation(client: TestClient):
     body = client.get("/readyz").json()
     assert body["checks"]["tenant_isolation"] == "ok"
+
+
+def test_socket_peer_is_bucketed_like_any_other_address(settings):
+    settings(client_ip_header="", proxy_shared_secret="")
+    assert deps.client_ip(_request({}, peer="2001:db8:1:2:aaaa:bbbb:cccc:dddd")) == "2001:db8:1:2::"
+    assert deps.client_ip(_request({}, peer="::ffff:198.51.100.4")) == "198.51.100.4"
+    assert deps.client_ip(_request({}, peer="testclient")) == "testclient"
+
+
+def test_body_limit_rejections_carry_cors_headers(client: TestClient):
+    origin = get_settings().cors_origins[0]
+    huge = client.post("/v1/auth/login", content=b"x", headers={
+        "Content-Type": "application/json", "Content-Length": str(50 * 1024 * 1024), "Origin": origin})
+    assert huge.status_code == 413
+    assert huge.headers.get("access-control-allow-origin") == origin

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+import time
+
 import httpx
 import pytest
 
@@ -231,7 +234,7 @@ def test_fetch_rejects_odd_ports_credentials_and_mapped_addresses(monkeypatch, u
 def test_fetch_has_a_total_deadline_and_hides_transport_errors(monkeypatch):
     monkeypatch.setattr(job_fetch, "_resolve", lambda host, port: ["93.184.216.34"])
 
-    def drip():
+    async def drip():
         while True:
             yield b"x"
 
@@ -240,6 +243,16 @@ def test_fetch_has_a_total_deadline_and_hides_transport_errors(monkeypatch):
         job_fetch.fetch_job_page("https://jobs.example.com/", timeout=1, max_bytes=10**9, transport=slow,
                                  total_seconds=0.05)
 
+    # A server that stalls before (or while) sending headers is cancelled at the deadline.
+    async def stall(request):
+        await asyncio.sleep(30)
+
+    started = time.monotonic()
+    with pytest.raises(job_fetch.JobFetchError, match="too long"):
+        job_fetch.fetch_job_page("https://jobs.example.com/", timeout=60, max_bytes=1000,
+                                 transport=httpx.MockTransport(stall), total_seconds=0.2)
+    assert time.monotonic() - started < 5
+
     def refuse(request):
         raise httpx.ConnectError("[Errno 111] Connection refused to 10.1.2.3:5432")
 
@@ -247,3 +260,33 @@ def test_fetch_has_a_total_deadline_and_hides_transport_errors(monkeypatch):
         job_fetch.fetch_job_page("https://jobs.example.com/", timeout=1, max_bytes=1000,
                                  transport=httpx.MockTransport(refuse))
     assert "10.1.2.3" not in str(caught.value)
+
+
+def test_fetch_tries_the_next_vetted_address_and_sends_ascii_host(monkeypatch):
+    lookups = []
+
+    def resolve(host, port):
+        lookups.append(host)
+        return ["93.184.216.34", "93.184.216.35"]
+
+    monkeypatch.setattr(job_fetch, "_resolve", resolve)
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.url.host, request.headers["host"], request.extensions.get("sni_hostname")))
+        if request.url.host == "93.184.216.34":
+            raise httpx.ConnectError("refused")
+        return httpx.Response(200, text=f"<html><body><main><p>{LONG}</p></main></body></html>",
+                              headers={"content-type": "text/html"})
+
+    job_fetch.fetch_job_page("https://b\u00fccher.example.com/job", timeout=1, max_bytes=100_000,
+                             transport=httpx.MockTransport(handler))
+    ascii_host = "xn--bcher-kva.example.com"
+    assert lookups == [ascii_host]  # one lookup; the second address is not re-resolved
+    assert seen == [("93.184.216.34", ascii_host, ascii_host), ("93.184.216.35", ascii_host, ascii_host)]
+
+    # One private address anywhere in the answer still refuses the whole host.
+    monkeypatch.setattr(job_fetch, "_resolve", lambda host, port: ["93.184.216.34", "10.0.0.5"])
+    with pytest.raises(job_fetch.JobFetchError, match="non-public"):
+        job_fetch.fetch_job_page("https://jobs.example.com/", timeout=1, max_bytes=1000,
+                                 transport=httpx.MockTransport(handler))

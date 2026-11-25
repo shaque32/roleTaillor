@@ -45,7 +45,7 @@ def readyz() -> JSONResponse:
 _ROLE_SQL = text(
     "SELECT r.rolsuper OR r.rolbypassrls AS bypasses,"
     " EXISTS (SELECT 1 FROM pg_tables t WHERE t.schemaname = 'roletailor'"
-    "         AND t.tableowner = current_user) AS owns_tables"
+    "         AND pg_has_role(current_user, t.tableowner, 'USAGE')) AS owns_tables"
     " FROM pg_roles r WHERE r.rolname = current_user"
 )
 _isolation_ok = False
@@ -53,7 +53,8 @@ _isolation_ok = False
 
 def _tenant_isolation(conn: Connection) -> str:
     """Row-level security only binds a role that is neither a superuser, BYPASSRLS, nor
-    the table owner. If RT_DATABASE_URL points at such a role every tenant can read every
+    the table owner (directly or through inherited membership of the owning role).
+    If RT_DATABASE_URL points at such a role every tenant can read every
     other tenant's rows, so the instance must not take traffic."""
     global _isolation_ok
     if _isolation_ok:

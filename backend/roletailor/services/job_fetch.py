@@ -6,20 +6,22 @@ page fetch. Both paths share one download function, so the guards below cover bo
 
 SSRF guards: only http/https, every hop's host must resolve exclusively to public
 addresses, redirects are followed manually (and re-checked), proxies from the
-environment are ignored, responses are size-capped and time-limited (per read and in
-total), and only ports 80 and 443 are allowed. Each connection is made to the exact
+environment are ignored, responses are size-capped and time-limited (per read, and in
+total by a deadline that cancels the fetch), and only ports 80 and 443 are allowed. Each connection is made to the exact
 address that was checked, so a host cannot pass the check with a public address and
 then answer the real lookup with a private one (DNS rebinding).
 """
 
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 import json
 import logging
 import re
 import socket
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from urllib.parse import urljoin, urlsplit
 
@@ -51,11 +53,23 @@ def _resolve(host: str, port: int) -> list[str]:
 
 
 ALLOWED_PORTS = frozenset({80, 443})
+MAX_ADDRESSES_TRIED = 3
+# Lookups block, so they run on their own small pool where the deadline can abandon them.
+_DNS_POOL = ThreadPoolExecutor(max_workers=8, thread_name_prefix="job-fetch-dns")
 
 
-def _check_url(url: str) -> tuple[str, str, int, str]:
-    """Validate one hop. Returns (scheme, host, port, address), where `address` is the
-    vetted public IP the connection must be made to."""
+@dataclass(frozen=True)
+class _Hop:
+    """One validated hop: `host` is the ASCII (IDNA) name, `addresses` the vetted public
+    IPs the connection may be made to, in resolver order."""
+
+    scheme: str
+    host: str
+    port: int
+    addresses: tuple[str, ...]
+
+
+def _check_url(url: str) -> _Hop:
     parts = urlsplit(url)
     if parts.scheme not in ("http", "https") or not parts.hostname:
         raise JobFetchError("only http and https URLs are supported")
@@ -68,59 +82,78 @@ def _check_url(url: str) -> tuple[str, str, int, str]:
     if port not in ALLOWED_PORTS:
         raise JobFetchError("only ports 80 and 443 are supported")
     try:
-        addresses = _resolve(parts.hostname, port)
+        # The IDNA form is what goes on the wire (Host header, SNI); headers are ASCII only.
+        host = httpx.URL(url).raw_host.decode("ascii")
+    except (httpx.InvalidURL, UnicodeError) as exc:
+        raise JobFetchError("invalid host name") from exc
+    try:
+        addresses = _resolve(host, port)
     except (socket.gaierror, UnicodeError) as exc:
         raise JobFetchError("host does not resolve") from exc
     if not addresses:
         raise JobFetchError("host does not resolve")
+    vetted: list[str] = []
     for address in addresses:
-        ip = ipaddress.ip_address(address.split("%", 1)[0])
+        address = address.split("%", 1)[0]
+        ip = ipaddress.ip_address(address)
         mapped = getattr(ip, "ipv4_mapped", None)
         if mapped is not None:
             ip = mapped
         if not ip.is_global or ip.is_multicast:
             raise JobFetchError("host resolves to a non-public address")
-    return parts.scheme, parts.hostname, port, addresses[0].split("%", 1)[0]
+        if address not in vetted:
+            vetted.append(address)
+    return _Hop(parts.scheme, host, port, tuple(vetted))
 
 
-def _pinned_request(client: httpx.Client, url: str) -> httpx.Request:
-    """Build a GET that connects to the address `_check_url` vetted instead of letting
-    the HTTP client resolve the name again. A second lookup is the DNS rebinding window:
-    the name can answer with a public address for the check and a private one for the
+def _pinned_request(client: httpx.AsyncClient, url: str, hop: _Hop, address: str) -> httpx.Request:
+    """Build a GET that connects to an address `_check_url` vetted instead of letting the
+    HTTP client resolve the name again. A second lookup is the DNS rebinding window: the
+    name can answer with a public address for the check and a private one for the
     connection. TLS still verifies the certificate against the original host name."""
-    scheme, host, port, address = _check_url(url)
     parts = urlsplit(url)
     literal = f"[{address}]" if ":" in address else address
-    default_port = 443 if scheme == "https" else 80
-    netloc = literal if port == default_port else f"{literal}:{port}"
+    default_port = 443 if hop.scheme == "https" else 80
+    netloc = literal if hop.port == default_port else f"{literal}:{hop.port}"
     target = parts._replace(netloc=netloc, fragment="").geturl()
-    host_header = host if port == default_port else f"{host}:{port}"
-    extensions = {"sni_hostname": host} if scheme == "https" else {}
+    name = f"[{hop.host}]" if ":" in hop.host else hop.host
+    host_header = name if hop.port == default_port else f"{name}:{hop.port}"
+    extensions = {"sni_hostname": hop.host} if hop.scheme == "https" else {}
     return client.build_request("GET", target, headers={"Host": host_header}, extensions=extensions)
+
+
+async def _send_pinned(client: httpx.AsyncClient, url: str, hop: _Hop) -> httpx.Response:
+    """Send to the first vetted address that accepts a connection. The addresses all come
+    from the one checked lookup; nothing is resolved again."""
+    failure: httpx.HTTPError | None = None
+    for address in hop.addresses[:MAX_ADDRESSES_TRIED]:
+        try:
+            return await client.send(_pinned_request(client, url, hop, address), stream=True)
+        except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+            failure = exc
+    assert failure is not None
+    raise failure
 
 
 _HTML = ("text/html", ("html", "text/plain"))
 _JSON = ("application/json", ("json",))
+_TOO_SLOW = "the page took too long to respond"
 
 
-def _download(
-    url: str, *, timeout: float, max_bytes: int, transport: httpx.BaseTransport | None,
-    kind: tuple[str, tuple[str, ...]] = _HTML, deadline: float | None = None,
+async def _download_async(
+    url: str, *, timeout: float, max_bytes: int, transport: httpx.AsyncBaseTransport | None,
+    kind: tuple[str, tuple[str, ...]], deadline: float,
 ):
     accept, allowed_types = kind
     headers = {"User-Agent": "RoleTailorBot/1.0 (+job description fetch)", "Accept": accept}
-    # `timeout` bounds each connect and read; the deadline bounds the whole fetch, so a
-    # server that drips bytes cannot hold a request thread open.
-    if deadline is None:
-        deadline = time.monotonic() + timeout * 2.5
-    with httpx.Client(
+    loop = asyncio.get_running_loop()
+    async with httpx.AsyncClient(
         timeout=timeout, follow_redirects=False, trust_env=False, transport=transport,
         headers=headers,
     ) as client:
         for _ in range(MAX_REDIRECTS + 1):
-            if time.monotonic() > deadline:
-                raise JobFetchError("the page took too long to respond")
-            response = client.send(_pinned_request(client, url), stream=True)
+            hop = await loop.run_in_executor(_DNS_POOL, _check_url, url)
+            response = await _send_pinned(client, url, hop)
             try:
                 if response.is_redirect and "location" in response.headers:
                     url = urljoin(url, response.headers["location"])
@@ -131,16 +164,36 @@ def _download(
                 if not any(allowed in content_type for allowed in allowed_types):
                     raise JobFetchError("unsupported content type")
                 body = bytearray()
-                for chunk in response.iter_bytes():
+                async for chunk in response.aiter_bytes():
                     body.extend(chunk)
                     if len(body) > max_bytes:
                         raise JobFetchError("response too large")
                     if time.monotonic() > deadline:
-                        raise JobFetchError("the page took too long to respond")
+                        raise JobFetchError(_TOO_SLOW)
                 return bytes(body), response.encoding or "utf-8"
             finally:
-                response.close()
+                await response.aclose()
     raise JobFetchError("too many redirects")
+
+
+def _download(
+    url: str, *, timeout: float, max_bytes: int, transport: httpx.AsyncBaseTransport | None,
+    kind: tuple[str, tuple[str, ...]] = _HTML, deadline: float | None = None,
+):
+    """`timeout` bounds each connect and read. The deadline bounds the whole fetch (name
+    lookups, connects, response headers, body and redirects) by cancelling it, so a server
+    that drips bytes, in the headers or the body, cannot hold a request thread open."""
+    if deadline is None:
+        deadline = time.monotonic() + timeout * 2.5
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise JobFetchError(_TOO_SLOW)
+    fetch = _download_async(url, timeout=timeout, max_bytes=max_bytes, transport=transport, kind=kind,
+                            deadline=deadline)
+    try:
+        return asyncio.run(asyncio.wait_for(fetch, remaining))
+    except TimeoutError:  # httpx timeouts are httpx.TimeoutException, not this
+        raise JobFetchError(_TOO_SLOW) from None
 
 
 def _clean(text: str) -> str:
@@ -204,7 +257,7 @@ def extract_job(html: str, *, structured_only: bool = False) -> FetchedJob:
 
 
 def _fetch_from_board(
-    request: job_boards.BoardRequest, *, timeout: float, max_bytes: int, transport: httpx.BaseTransport | None,
+    request: job_boards.BoardRequest, *, timeout: float, max_bytes: int, transport: httpx.AsyncBaseTransport | None,
     deadline: float | None = None,
 ) -> FetchedJob:
     try:
@@ -224,8 +277,8 @@ def _fetch_from_board(
 
 
 def _fetch_page(
-    url: str, *, timeout: float, max_bytes: int, transport: httpx.BaseTransport | None, structured_only: bool = False,
-    deadline: float | None = None,
+    url: str, *, timeout: float, max_bytes: int, transport: httpx.AsyncBaseTransport | None,
+    structured_only: bool = False, deadline: float | None = None,
 ) -> FetchedJob:
     try:
         body, encoding = _download(url, timeout=timeout, max_bytes=max_bytes, transport=transport,
@@ -242,7 +295,7 @@ def fetch_job_page(
     timeout: float,
     max_bytes: int,
     board_max_bytes: int | None = None,
-    transport: httpx.BaseTransport | None = None,
+    transport: httpx.AsyncBaseTransport | None = None,
     total_seconds: float | None = None,
 ) -> FetchedJob:
     """Fetch a job posting, using the job board's public API when the URL is from a known board.

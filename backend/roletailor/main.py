@@ -30,6 +30,8 @@ def create_app() -> FastAPI:
     app.include_router(ops.router)
 
     install_error_handlers(app)
+    # Added first so CORS wraps it: a 413 from the limit still carries the CORS headers.
+    app.add_middleware(BodyLimitMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
@@ -39,6 +41,5 @@ def create_app() -> FastAPI:
                        "X-Organization-ID"],
         expose_headers=["X-Correlation-ID", "Retry-After"],
     )
-    app.add_middleware(BodyLimitMiddleware)
     app.add_middleware(RequestContextMiddleware)
     return app

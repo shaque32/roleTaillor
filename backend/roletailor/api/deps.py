@@ -80,7 +80,8 @@ def client_ip(request: Request) -> str:
         edge = _valid_ip(request.headers.get(settings.client_ip_header))
         if edge:
             return edge
-    return (request.client.host if request.client else None) or "unknown"
+    peer = request.client.host if request.client else None
+    return _valid_ip(peer) or peer or "unknown"
 
 
 def enforce_rate_limit(request: Request, scope: str, identity: str, limit: int, message: str,

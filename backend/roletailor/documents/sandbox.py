@@ -26,6 +26,7 @@ MAX_ZIP_MEMBERS = 2000
 MAX_ZIP_TOTAL_BYTES = 64 * 1024 * 1024
 EXIT_REJECTED = 3
 _PASS_ENV = ("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "TESSDATA_PREFIX", "OMP_THREAD_LIMIT",
+             "RT_TESSERACT",
              "PYTHONPATH", "VIRTUAL_ENV", "LD_LIBRARY_PATH")
 # Parses are CPU-bound; a small pool keeps a burst of uploads from starving the API.
 _SLOTS = threading.BoundedSemaphore(2)
