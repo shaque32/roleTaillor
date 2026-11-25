@@ -150,7 +150,7 @@ Estimated cost: about $60 a month for production and $20 for staging, before mod
   - `\prompt 'rt_owner password: ' owner_password`
   - `\prompt 'rt_app password: ' app_password`
   - `\i db/bootstrap/managed_roles.sql`
-  - If the cluster admin cannot create roles, create users named `rt_owner` and `rt_app` with `fly mpg users` instead, then run the script for the grants.
+  - If the cluster admin cannot create roles, create users named `rt_owner` and `rt_app` with `fly mpg users` instead, then run only the statements from `CREATE EXTENSION` onward in `db/bootstrap/managed_roles.sql`.
 - [ ] Run `deploy/fly/bootstrap.sh staging`. It creates the three apps (`roletailor-api-staging`, `roletailor-web-staging`, `roletailor-redis-staging`), the Redis volume and the Tigris bucket, and it generates and stores these without showing them:
   - `REDIS_PASSWORD` (Redis app) and `RT_REDIS_URL` (API app)
   - `RT_SECRET_KEY` (API app)
