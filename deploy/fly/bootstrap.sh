@@ -65,8 +65,9 @@ Attach it / fetch the admin connection string:
   flyctl mpg attach roletailor-db$SUFFIX --app $API   # verify the exact subcommand with 'flyctl mpg --help'
 Then, as the cluster admin, create the roles and extension
 (enter the passwords at psql's own prompts, never on a command line, where they would
-land in shell history and the process list):
-  cd $ROOT && psql "\$ADMIN_URL"
+land in shell history and the process list; open the session with "flyctl mpg connect",
+or keep the admin password in ~/.pgpass and pass psql a URL without it):
+  cd $ROOT && flyctl mpg connect
     \\prompt 'rt_owner password: ' owner_password
     \\prompt 'rt_app password: ' app_password
     \\i db/bootstrap/managed_roles.sql

@@ -1,13 +1,14 @@
 -- One-time bootstrap for a managed PostgreSQL cluster (e.g. Fly Managed Postgres).
 -- Run as the cluster admin user, connected to the target (empty) application database:
 --
---   psql "$ADMIN_URL"
+--   fly mpg connect        (or psql with a password-free URL and the password in ~/.pgpass)
 --     \prompt 'rt_owner password: ' owner_password
 --     \prompt 'rt_app password: ' app_password
 --     \i db/bootstrap/managed_roles.sql
 --
 -- Set the passwords at psql's prompts, not with -v on the command line, where they would
--- land in shell history and the process list.
+-- land in shell history and the process list. Do not pass psql a URL that holds the admin
+-- password either.
 --
 -- Creates rt_owner (runs migrations; RT_MIGRATION_DATABASE_URL, direct connection) and
 -- rt_app (runtime app/worker; RT_DATABASE_URL, pooled), and installs pgvector.

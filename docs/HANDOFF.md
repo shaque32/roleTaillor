@@ -146,7 +146,7 @@ Estimated cost: about $60 a month for production and $20 for staging, before mod
 
 - [ ] Create a Fly.io account with billing, install `flyctl`, and run `fly auth login`.
 - [ ] Create the Postgres cluster (Fly Managed Postgres, version 16, which ships pgvector). Developer plan for staging, Basic for production.
-- [ ] Create the database roles as the cluster admin. This creates `rt_owner` (runs migrations) and `rt_app` (the app, bound by row-level security). `rt_app` must never be a superuser, own the database, or have BYPASSRLS. The API health check fails if it does. Generate two passwords with `openssl rand -hex 24` and store them in your password manager first. Then, from the repo root, open a session with `psql "$ADMIN_URL"` and run these three lines, entering the passwords at psql's own prompts so they never appear on a command line, in shell history or in the process list:
+- [ ] Create the database roles as the cluster admin. This creates `rt_owner` (runs migrations) and `rt_app` (the app, bound by row-level security). `rt_app` must never be a superuser, own the database, or have BYPASSRLS. The API health check fails if it does. Generate two passwords with `openssl rand -hex 24` and store them in your password manager first. Then, from the repo root, open an admin session with `fly mpg connect`, which needs no connection string. If you use the admin connection string instead, keep its password in `~/.pgpass` (mode 600) and pass psql a URL without the password, so the admin credential also stays out of the process list. In that session, run these three lines, entering the passwords at psql's own prompts so they never appear on a command line, in shell history or in the process list:
   - `\prompt 'rt_owner password: ' owner_password`
   - `\prompt 'rt_app password: ' app_password`
   - `\i db/bootstrap/managed_roles.sql`
@@ -159,7 +159,7 @@ Estimated cost: about $60 a month for production and $20 for staging, before mod
 - [ ] Set the two database URLs on the API app with `fly secrets set --stage`:
   - `RT_DATABASE_URL`: the **pooled** connection as `rt_app`, scheme `postgresql+psycopg://`
   - `RT_MIGRATION_DATABASE_URL`: the **direct** connection as `rt_owner`. It must not go through a transaction pooler, because the migration runner holds an advisory lock.
-- [ ] Deploy: `deploy/fly/deploy.sh staging redis` once, then `deploy/fly/deploy.sh staging`.
+- [ ] Deploy: `deploy/fly/deploy.sh staging redis` once, then `deploy/fly/deploy.sh staging`. If the commit you deploy includes PR #12, finish the Resend setup in 5.6 first. Without `RESEND_API_KEY` and a real `RT_EMAIL_FROM`, the API will not start.
 - [ ] Add certificates and DNS: `fly certs add <host> -a <app>` for the API and web hostnames, then create the DNS records Fly prints.
 - [ ] Wire up CI: in GitHub, Settings, Environments, create `staging` and `prod`. Give each a `FLY_API_TOKEN` secret (`fly tokens create deploy`) and an `API_URL` variable. Add a required reviewer on `prod`. After this, every merge to `main` deploys staging, and production deploys are manual with approval.
 - [ ] Smoke test: `curl https://api-staging.<domain>/readyz` returns `ready`. Then register, upload a resume and run one tailoring.
