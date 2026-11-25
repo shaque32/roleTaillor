@@ -84,3 +84,10 @@ def test_live_gate_thresholds():
     other = _summary()
     other["configs"]["current"]["models"] = {**gate.production_models(), "plan": "claude-haiku-5-5"}
     assert any("production config" in p for p in gate.check_live_summary(other))
+
+
+def test_relative_config_paths_resolve_from_any_directory(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("RT_MODELS_CONFIG_PATH", "config/models.yaml")
+    assert Settings().models_config_path == ROOT / "config" / "models.yaml"
+    assert Settings().models_config_path.is_file()

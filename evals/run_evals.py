@@ -60,7 +60,8 @@ SUMMARY = ROOT / "evals" / "results" / "live_summary.json"
 
 
 def load_dotenv() -> None:
-    """Fill missing environment variables from .env files. Values are never printed."""
+    """Fill missing provider API keys from .env files. Values are never printed. Other
+    settings (RT_*) are read by Settings itself."""
     for path in (ROOT / ".env", ROOT / "backend" / ".env"):
         if not path.is_file():
             continue
@@ -70,7 +71,7 @@ def load_dotenv() -> None:
                 continue
             k, v = line.split("=", 1)
             v = v.split(" #", 1)[0].strip().strip('"').strip("'")
-            if v and not os.environ.get(k.strip()):
+            if v and k.strip().endswith("_API_KEY") and not os.environ.get(k.strip()):
                 os.environ[k.strip()] = v
 
 
@@ -272,9 +273,10 @@ def markdown(report: dict) -> str:
         s = report["configs"][n]["summary"]
         lines.append(f"**{n}** starting models: " + ", ".join(
             f"{k}={v}" for k, v in report["configs"][n]["models"].items()))
+        target = ("not measured (no scored runs)" if not s["scored"]
+                  else "met" if s["mean_cost_usd"] <= TARGET_COST_PER_RUN else "NOT met")
         lines.append(f"Mean cost by stage: {s['mean_cost_by_stage']}. "
-                     f"Target ${TARGET_COST_PER_RUN:.2f}/run: "
-                     f"{'met' if s['mean_cost_usd'] <= TARGET_COST_PER_RUN else 'NOT met'}.")
+                     f"Target ${TARGET_COST_PER_RUN:.2f}/run: {target}.")
         bad = [r for r in report["configs"][n]["results"] if r["status"] != "ok" or not r["passed"]]
         for r in bad:
             why = r.get("error") or ", ".join(r["failures"])
