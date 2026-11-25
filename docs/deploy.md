@@ -75,11 +75,14 @@ These steps need your Fly account and credentials. Start with staging.
 3. **Create the database.**
    ```bash
    fly mpg create --name roletailor-staging --region iad      # choose the Developer plan for staging and Basic for prod
-   fly mpg connect                                            # or use the admin URL the dashboard shows
-   psql "$ADMIN_URL" -v owner_password="$(openssl rand -hex 24)" -v app_password="$(openssl rand -hex 24)" \
-        -f db/bootstrap/managed_roles.sql
    ```
-   Keep both passwords in your password manager. If the cluster admin cannot create roles, create users named `rt_owner` and `rt_app` with `fly mpg users` instead. `rt_app` must not be a superuser, own the database, or have BYPASSRLS.
+   Generate two passwords with `openssl rand -hex 24` and keep them in your password manager. Then, from the repo root, open a session with `psql "$ADMIN_URL"` (or `fly mpg connect`) and enter them at psql's own prompts, so they never reach a command line, shell history or the process list:
+   ```
+   \prompt 'rt_owner password: ' owner_password
+   \prompt 'rt_app password: ' app_password
+   \i db/bootstrap/managed_roles.sql
+   ```
+   If the cluster admin cannot create roles, create users named `rt_owner` and `rt_app` with `fly mpg users` instead. `rt_app` must not be a superuser, own the database, or have BYPASSRLS.
 4. **Run the bootstrap script.** `deploy/fly/bootstrap.sh staging` creates the three apps and the Redis volume, creates the Tigris bucket, generates `REDIS_PASSWORD` and `RT_SECRET_KEY`, and prompts for the provider and Stripe keys without echoing them.
 5. **Set the database URLs.**
    ```bash
