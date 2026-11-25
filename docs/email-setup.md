@@ -91,4 +91,11 @@ to the log.
 
 Add a class with a `send(message)` method next to `ResendProvider` in
 `backend/roletailor/mailer/provider.py`, return it from `get_provider()`, and add its name
-to `EMAIL_PROVIDERS` in `config.py`. Nothing else changes.
+to `EMAIL_PROVIDERS` in `config.py`.
+
+Staging and production will still refuse to start with the new provider until the
+production guard allows it. `Settings._check_production_config()` in `config.py` requires
+`RT_EMAIL_PROVIDER=resend` outside dev and test, separately from `EMAIL_PROVIDERS`. Add the
+new provider there together with a check that its own credential is set, and cover both in
+`backend/tests/pipeline/test_config_guard.py`. Keep `console` and `memory` rejected outside
+dev and test.
