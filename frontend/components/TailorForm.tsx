@@ -10,6 +10,7 @@ import { formatDate } from "@/lib/format";
 import { Alert, Button, ButtonLink, ChoiceCards, Disclosure, Input, Select, Skeleton, Textarea } from "@/components/ui";
 import { ConsentDialog } from "@/components/ConsentDialog";
 import { PaymentDialog } from "./PaymentDialog";
+import { ResendEmailButton, UNVERIFIED_MESSAGE, isEmailUnverified } from "./VerifyEmailNotice";
 
 const PAGE_OPTIONS = [
   { value: "1", label: "1 page", description: "Early career or concise" },
@@ -43,6 +44,7 @@ export function TailorForm({ initialVersionId, defaultPageLimit = 2 }: { initial
   const [notice, setNotice] = useState<string | null>(null);
   const [payOpen, setPayOpen] = useState(false);
   const [consentOpen, setConsentOpen] = useState(false);
+  const [unverified, setUnverified] = useState(false);
   const [billing, setBilling] = useState<BillingStatus | null>(null);
   const jobCache = useRef<{ key: string; id: string } | null>(null);
   const jobRef = useRef<HTMLTextAreaElement>(null);
@@ -99,6 +101,7 @@ export function TailorForm({ initialVersionId, defaultPageLimit = 2 }: { initial
     setError(null);
     setJobError(null);
     setNotice(null);
+    setUnverified(false);
     if (!versionId) return setError("Choose a resume to tailor.");
     if (!trimmed) {
       jobRef.current?.focus();
@@ -145,6 +148,10 @@ export function TailorForm({ initialVersionId, defaultPageLimit = 2 }: { initial
       }
       if (e instanceof ApiError && e.status === 428) {
         setConsentOpen(true);
+        return;
+      }
+      if (isEmailUnverified(e)) {
+        setUnverified(true);
         return;
       }
       if (acceptPaid) throw e;
@@ -323,6 +330,11 @@ export function TailorForm({ initialVersionId, defaultPageLimit = 2 }: { initial
       />
 
       {error && <Alert tone="error">{error}</Alert>}
+      {unverified && (
+        <Alert tone="warning" action={<ResendEmailButton onAlreadyVerified={() => setUnverified(false)} />}>
+          {UNVERIFIED_MESSAGE}
+        </Alert>
+      )}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
         <Button type="submit" size="lg" loading={busy} className="w-full sm:w-auto">
           Start tailoring <ArrowRight className="h-4 w-4" aria-hidden />

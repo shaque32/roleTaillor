@@ -105,7 +105,7 @@ else
 fi
 
 step "7/7 Provider and billing secrets (blank = skip; input hidden)"
-for name in ANTHROPIC_API_KEY DEEPSEEK_API_KEY RT_STRIPE_SECRET_KEY RT_STRIPE_WEBHOOK_SECRET RT_STRIPE_SUBSCRIPTION_PRICE_ID; do
+for name in ANTHROPIC_API_KEY DEEPSEEK_API_KEY RESEND_API_KEY RT_STRIPE_SECRET_KEY RT_STRIPE_WEBHOOK_SECRET RT_STRIPE_SUBSCRIPTION_PRICE_ID; do
   read -r -s -p "$name: " value || value=""
   echo
   if [[ -n "$value" ]]; then

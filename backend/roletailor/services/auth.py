@@ -33,7 +33,7 @@ MIN_PASSWORD_LENGTH = 10
 USER_COLUMNS = (
     "id, email, full_name, address, contact_number, linkedin_url, preferred_page_limit,"
     " industry_focus, resume_tone, ats_preference, technical_depth, preferred_template_id,"
-    " created_at"
+    " created_at, email_verified_at"
 )
 
 
@@ -64,11 +64,15 @@ def normalize_email(email: str) -> str:
     return email
 
 
-def _check_password_policy(password: str) -> None:
+def check_password_policy(password: str) -> None:
     if not MIN_PASSWORD_LENGTH <= len(password) <= 256:
         raise AppError(
             422, "weak_password", f"Passwords need at least {MIN_PASSWORD_LENGTH} characters."
         )
+
+
+def hash_password(password: str) -> str:
+    return _hasher.hash(password)
 
 
 def memberships(conn: Connection, user_id: UUID | str) -> list[dict]:
@@ -108,7 +112,7 @@ def _organization(conn: Connection, org_id: UUID, role: str) -> dict:
 
 def register(email: str, password: str, full_name: str, device_label: str | None) -> AuthResult:
     email = normalize_email(email)
-    _check_password_policy(password)
+    check_password_policy(password)
     org_id = uuid4()
     with db.global_tx() as conn:
         if fetch_one(conn, "SELECT 1 FROM users WHERE lower(email) = :e", {"e": email}):

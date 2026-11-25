@@ -21,8 +21,10 @@ async function handle(req: NextRequest, ctx: { params: Promise<{ path: string[] 
   if (path.some((seg) => seg === ".." || seg === "." || seg.includes("/"))) {
     return errorResponse(400, "invalid_path", "Invalid path.");
   }
-  // Auth endpoints that mint tokens go through /api/session only.
-  if (path[0] === "auth" && path[1] !== "logout") {
+  // Auth endpoints that mint tokens go through /api/session, public ones through /api/auth.
+  // Only logout and the authenticated verification resend may pass through here.
+  const isResend = path.length === 3 && path[1] === "verify-email" && path[2] === "resend";
+  if (path[0] === "auth" && !(path.length === 2 && path[1] === "logout") && !isResend) {
     return errorResponse(404, "not_found", "Use /api/session for login and registration.");
   }
   if (!SAFE_METHODS.has(req.method) && !isSameOrigin(req)) {

@@ -18,3 +18,7 @@ node dev/screenshots.mjs <outdir>
 The mock binds to `127.0.0.1` by default; set `HOST=0.0.0.0` (or another address) to override.
 Mock state is in memory and resets when the mock restarts. Onboarding has no server-side "completed" flag: it is a
 client-side flow reached after registering, so it is captured directly at `/onboarding`.
+
+Password reset and email verification: the mock accepts any token except the literal `bad` (which returns `invalid_token`).
+Demo the pages at `/forgot-password`, `/reset-password#token=demo` and `/verify-email#token=demo`. Set `MOCK_UNVERIFIED=1`
+to start with an unconfirmed email (shows the app banner; verifying clears it).

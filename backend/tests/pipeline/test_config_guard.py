@@ -14,6 +14,9 @@ GOOD = {
     "api_base_url": "https://api.roletailor.example",
     "app_base_url": "https://app.roletailor.example",
     "cors_origins": ["https://app.roletailor.example"],
+    "email_provider": "resend",
+    "RESEND_API_KEY": "re_live_key",
+    "email_from": "RoleTailor <no-reply@mail.roletailor.test>",
 }
 
 
@@ -28,6 +31,12 @@ def test_dev_defaults_pass():
 def test_full_production_config_passes():
     make(**GOOD)
     make(**{**GOOD, "environment": "staging", "llm_mode": "fake"})
+    make(**{**GOOD, "environment": "staging", "email_provider": "console"})
+
+
+def test_unknown_email_provider_fails_everywhere():
+    with pytest.raises(ValidationError, match="RT_EMAIL_PROVIDER must be one of"):
+        make(environment="dev", email_provider="smtp")
 
 
 def test_unknown_environment_fails():
@@ -42,6 +51,10 @@ def test_unknown_environment_fails():
     ({"proxy_shared_secret": ""}, "RT_PROXY_SHARED_SECRET"),
     ({"database_url": "postgresql+psycopg://rt_app:rt_app@db:5432/roletailor"}, "development password"),
     ({"llm_mode": "fake"}, "RT_LLM_MODE"),
+    ({"email_provider": "console"}, "RT_EMAIL_PROVIDER must be 'resend' in prod"),
+    ({"email_provider": "memory"}, "tests only"),
+    ({"RESEND_API_KEY": ""}, "RESEND_API_KEY must be set"),
+    ({"email_from": "RoleTailor <no-reply@roletailor.example>"}, "RT_EMAIL_FROM"),
     ({"api_base_url": "http://localhost:8000"}, "RT_API_BASE_URL"),
     ({"app_base_url": "http://app.roletailor.example"}, "RT_APP_BASE_URL"),
     ({"cors_origins": ["http://localhost:3000"]}, "RT_CORS_ORIGINS"),

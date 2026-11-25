@@ -3,9 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { RefreshCw, Sparkles } from "lucide-react";
 import { api } from "@/lib/api";
+import { ResendEmailButton, UNVERIFIED_MESSAGE, isEmailUnverified } from "@/components/VerifyEmailNotice";
 import { cx } from "@/lib/format";
 import type { ChangeDecision, ResumeChange } from "@/lib/types";
-import { Badge, Button, Card, DiffView, SegmentedControl, Section, Textarea, useToast } from "@/components/ui";
+import { Alert, Badge, Button, Card, DiffView, SegmentedControl, Section, Textarea, useToast } from "@/components/ui";
 
 type Filter = "all" | ChangeDecision;
 
@@ -31,6 +32,7 @@ export function ChangeReview({
   const [bulk, setBulk] = useState(false);
   const [instructions, setInstructions] = useState("");
   const [regenBusy, setRegenBusy] = useState(false);
+  const [unverified, setUnverified] = useState(false);
 
   // Latest props for the bulk loop, which outlives the render it started in.
   const changesRef = useRef(changes);
@@ -116,6 +118,7 @@ export function ChangeReview({
   async function regenerate() {
     const focus = changes.filter((c) => selected.has(c.id)).map((c) => c.block_path);
     setRegenBusy(true);
+    setUnverified(false);
     try {
       await api.iterate(workflowId, {
         focus_block_ids: focus.length ? focus : undefined,
@@ -126,7 +129,8 @@ export function ChangeReview({
       toast.info("Rewriting. Re-runs on this job are free.");
       onIterationStarted();
     } catch (e) {
-      toast.error(e);
+      if (isEmailUnverified(e)) setUnverified(true);
+      else toast.error(e);
     } finally {
       setRegenBusy(false);
     }
@@ -275,6 +279,11 @@ export function ChangeReview({
             value={instructions}
             onChange={(e) => setInstructions(e.target.value)}
           />
+          {unverified && (
+            <Alert tone="warning" className="mt-4" action={<ResendEmailButton onAlreadyVerified={() => setUnverified(false)} />}>
+              {UNVERIFIED_MESSAGE}
+            </Alert>
+          )}
           <Button className="mt-4" variant="secondary" onClick={regenerate} loading={regenBusy} disabled={busy}>
             <RefreshCw className="h-4 w-4" aria-hidden /> {selected.size > 0 ? "Rewrite selected" : "Rewrite everything"}
           </Button>
