@@ -106,29 +106,48 @@ def _check_url(url: str) -> _Hop:
     return _Hop(parts.scheme, host, port, tuple(vetted))
 
 
-def _pinned_request(client: httpx.AsyncClient, url: str, hop: _Hop, address: str) -> httpx.Request:
-    """Build a GET that connects to an address `_check_url` vetted instead of letting the
-    HTTP client resolve the name again. A second lookup is the DNS rebinding window: the
-    name can answer with a public address for the check and a private one for the
-    connection. TLS still verifies the certificate against the original host name."""
-    parts = urlsplit(url)
-    literal = f"[{address}]" if ":" in address else address
-    default_port = 443 if hop.scheme == "https" else 80
-    netloc = literal if hop.port == default_port else f"{literal}:{hop.port}"
-    target = parts._replace(netloc=netloc, fragment="").geturl()
-    name = f"[{hop.host}]" if ":" in hop.host else hop.host
-    host_header = name if hop.port == default_port else f"{name}:{hop.port}"
-    extensions = {"sni_hostname": hop.host} if hop.scheme == "https" else {}
-    return client.build_request("GET", target, headers={"Host": host_header}, extensions=extensions)
+_PIN = "rt_pinned_address"
+
+
+class _PinnedTransport(httpx.AsyncBaseTransport):
+    """Connects to an address `_check_url` vetted instead of letting the HTTP client
+    resolve the name again. A second lookup is the DNS rebinding window: the name can
+    answer with a public address for the check and a private one for the connection.
+
+    The pinning happens here, below the client, so the client keeps the real URL: its
+    cookie jar stores and replays cookies by host name across redirects, whichever
+    address each hop lands on. The Host header and TLS (SNI and certificate check) still
+    use the original host name."""
+
+    def __init__(self, inner: httpx.AsyncBaseTransport):
+        self._inner = inner
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        address = request.extensions.get(_PIN)
+        if address is None:  # never connect by name
+            raise httpx.ConnectError("no vetted address for this request", request=request)
+        extensions = {k: v for k, v in request.extensions.items() if k != _PIN}
+        if request.url.scheme == "https":
+            extensions["sni_hostname"] = request.url.raw_host.decode("ascii")
+        pinned = httpx.Request(
+            request.method, request.url.copy_with(host=address), headers=request.headers,
+            stream=request.stream, extensions=extensions,
+        )
+        return await self._inner.handle_async_request(pinned)
+
+    async def aclose(self) -> None:
+        await self._inner.aclose()
 
 
 async def _send_pinned(client: httpx.AsyncClient, url: str, hop: _Hop) -> httpx.Response:
     """Send to the first vetted address that accepts a connection. The addresses all come
     from the one checked lookup; nothing is resolved again."""
     failure: httpx.HTTPError | None = None
+    target = urlsplit(url)._replace(fragment="").geturl()
     for address in hop.addresses[:MAX_ADDRESSES_TRIED]:
         try:
-            return await client.send(_pinned_request(client, url, hop, address), stream=True)
+            request = client.build_request("GET", target, extensions={_PIN: address})
+            return await client.send(request, stream=True)
         except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
             failure = exc
     assert failure is not None
@@ -147,8 +166,9 @@ async def _download_async(
     accept, allowed_types = kind
     headers = {"User-Agent": "RoleTailorBot/1.0 (+job description fetch)", "Accept": accept}
     loop = asyncio.get_running_loop()
+    pinned = _PinnedTransport(transport or httpx.AsyncHTTPTransport(trust_env=False))
     async with httpx.AsyncClient(
-        timeout=timeout, follow_redirects=False, trust_env=False, transport=transport,
+        timeout=timeout, follow_redirects=False, trust_env=False, transport=pinned,
         headers=headers,
     ) as client:
         for _ in range(MAX_REDIRECTS + 1):

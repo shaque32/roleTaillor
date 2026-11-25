@@ -48,22 +48,18 @@ _ROLE_SQL = text(
     "         AND pg_has_role(current_user, t.tableowner, 'USAGE')) AS owns_tables"
     " FROM pg_roles r WHERE r.rolname = current_user"
 )
-_isolation_ok = False
 
 
 def _tenant_isolation(conn: Connection) -> str:
     """Row-level security only binds a role that is neither a superuser, BYPASSRLS, nor
     the table owner (directly or through inherited membership of the owning role).
     If RT_DATABASE_URL points at such a role every tenant can read every
-    other tenant's rows, so the instance must not take traffic."""
-    global _isolation_ok
-    if _isolation_ok:
-        return "ok"
+    other tenant's rows, so the instance must not take traffic. Checked on every probe:
+    role attributes and ownership can change while the process runs."""
     row = conn.execute(_ROLE_SQL).mappings().first()
     if row is None or row["bypasses"] or row["owns_tables"]:
         log.critical("database role bypasses row-level security; refusing readiness")
         return "error: database role bypasses row-level security"
-    _isolation_ok = True
     return "ok"
 
 
