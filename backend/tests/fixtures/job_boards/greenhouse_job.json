@@ -1,0 +1,49 @@
+{
+  "absolute_url": "https://boards.greenhouse.io/exampleco/jobs/8172510",
+  "data_compliance": [
+    {
+      "type": "gdpr",
+      "requires_consent": false,
+      "requires_processing_consent": false,
+      "requires_retention_consent": false,
+      "retention_period": null,
+      "demographic_data_consent_applies": false
+    }
+  ],
+  "education": "education_required",
+  "internal_job_id": 3537063,
+  "location": {
+    "name": "Seattle, San Francisco, New York City"
+  },
+  "metadata": null,
+  "id": 8172510,
+  "updated_at": "2026-11-19T12:12:24-05:00",
+  "requisition_id": "See Opening ID",
+  "title": "Senior Data Engineer",
+  "company_name": "ExampleCo",
+  "first_published": "2026-09-09T10:50:29-04:00",
+  "language": "en",
+  "application_deadline": null,
+  "content": "&lt;h2&gt;&lt;strong&gt;Who we are &lt;/strong&gt;&lt;/h2&gt;\n&lt;p&gt;&lt;span style=&quot;font-weight: 400;&quot;&gt;ExampleCo builds financial infrastructure for businesses. It&#39;s a small team with a large mission.&lt;/span&gt;&lt;/p&gt;\n&lt;h2&gt;&lt;strong&gt;What you’ll do&lt;/strong&gt;&lt;/h2&gt;\n&lt;p&gt;You will design and run streaming data pipelines with Kafka and Spark, own data quality checks, and partner with analytics and machine learning teams to ship reliable datasets.&lt;/p&gt;\n&lt;ul&gt;\n&lt;li&gt;Build and operate &lt;strong&gt;Kafka&lt;/strong&gt; pipelines&amp;nbsp;at scale&lt;/li&gt;\n&lt;li&gt;Model data in Snowflake &amp;amp; dbt&lt;/li&gt;\n&lt;/ul&gt;",
+  "departments": [
+    {
+      "id": 81946,
+      "name": "Data Platform",
+      "child_ids": [],
+      "parent_id": 78876
+    }
+  ],
+  "offices": [
+    {
+      "id": 65234,
+      "name": "US",
+      "location": null,
+      "child_ids": [
+        89623
+      ],
+      "parent_id": 673
+    }
+  ],
+  "ai_disclaimer": null,
+  "include_ai_disclaimer": false
+}

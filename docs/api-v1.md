@@ -40,7 +40,7 @@ AI routes return `428 consent_required` until the user grants `ai_processing` co
 ## Jobs
 | Method | Path | Body | Returns |
 |---|---|---|---|
-| POST | /jobs | `{source_url?, description?, title?, company?}` | job posting `{id, source_url, title, company, description, created_at}`. A pasted `description` wins over `source_url`. URL fetch failure returns `422 job_url_unreadable` so the UI asks for a paste |
+| POST | /jobs | `{source_url?, description?, title?, company?}` | job posting `{id, source_url, title, company, description, created_at}`. A pasted `description` wins over `source_url`. Greenhouse, Lever, Ashby and SmartRecruiters URLs are read through each board's public posting data; other URLs use a plain page fetch. URL fetch failure returns `422 job_url_unreadable` so the UI asks for a paste |
 | GET | /jobs/{id} | | job posting |
 
 ## Tailoring workflows

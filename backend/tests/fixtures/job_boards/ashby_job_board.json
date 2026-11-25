@@ -1,0 +1,55 @@
+{
+  "jobs": [
+    {
+      "id": "11111111-2222-4333-8444-555555555555",
+      "title": "Account Executive",
+      "department": "Engineering",
+      "team": "Data",
+      "employmentType": "FullTime",
+      "location": "Remote - European Union",
+      "secondaryLocations": [],
+      "publishedAt": "2024-03-04T14:29:08.532+00:00",
+      "isListed": true,
+      "isRemote": true,
+      "workplaceType": "Remote",
+      "address": {
+        "postalAddress": {
+          "postalCode": "",
+          "addressRegion": "",
+          "addressCountry": "European Union",
+          "addressLocality": ""
+        }
+      },
+      "jobUrl": "https://jobs.ashbyhq.com/ExampleCo/11111111-2222-4333-8444-555555555555",
+      "applyUrl": "https://jobs.ashbyhq.com/ExampleCo/11111111-2222-4333-8444-555555555555/application",
+      "descriptionHtml": "<h1>About the role</h1><p style=\"min-height:1.5em\">Sell to mid-market finance teams across EMEA and manage the full sales cycle from first call to close with care.</p>",
+      "descriptionPlain": "ABOUT THE ROLE\n\nSell to mid-market finance teams."
+    },
+    {
+      "id": "7458d4e9-da2e-47bd-98cb-adfda43d42b2",
+      "title": "Analytics Engineer",
+      "department": "Engineering",
+      "team": "Data",
+      "employmentType": "FullTime",
+      "location": "Remote - European Union",
+      "secondaryLocations": [],
+      "publishedAt": "2024-03-04T14:29:08.532+00:00",
+      "isListed": true,
+      "isRemote": true,
+      "workplaceType": "Remote",
+      "address": {
+        "postalAddress": {
+          "postalCode": "",
+          "addressRegion": "",
+          "addressCountry": "European Union",
+          "addressLocality": ""
+        }
+      },
+      "jobUrl": "https://jobs.ashbyhq.com/ExampleCo/7458d4e9-da2e-47bd-98cb-adfda43d42b2",
+      "applyUrl": "https://jobs.ashbyhq.com/ExampleCo/7458d4e9-da2e-47bd-98cb-adfda43d42b2/application",
+      "descriptionHtml": "<h1><strong>About ExampleCo</strong></h1><p style=\"min-height:1.5em\">Hi 👋 I’m <a target=\"_blank\" rel=\"noopener noreferrer nofollow\" href=\"https://example.com/colin\"><u>Colin</u></a>, Director of Engineering. You will design and run streaming data pipelines with Kafka and Spark, own data quality checks, and partner with analytics and machine learning teams to ship reliable datasets.</p><h2>What you need</h2><ul style=\"min-height:1.5em\"><li><p style=\"min-height:1.5em\">Expert SQL and dbt</p></li><li><p style=\"min-height:1.5em\">Experience with Airflow</p></li></ul>",
+      "descriptionPlain": "ABOUT EXAMPLECO\n\nHi 👋 I’m Colin https://example.com/colin, Director of Engineering. You will design and run streaming data pipelines with Kafka and Spark, own data quality checks, and partner with analytics and machine learning teams to ship reliable datasets.\n\nWHAT YOU NEED\n\n • Expert SQL and dbt\n\n • Experience with Airflow"
+    }
+  ],
+  "apiVersion": "1"
+}

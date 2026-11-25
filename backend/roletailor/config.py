@@ -95,6 +95,8 @@ class Settings(BaseSettings):
     job_fetch_timeout_seconds: float = 10.0
     job_fetch_total_seconds: float = 25.0  # wall-clock budget for one URL, redirects included
     job_fetch_max_bytes: int = 2 * 1024 * 1024
+    # Ashby's public API only serves a whole job board at once, which can pass 2 MB.
+    job_fetch_board_max_bytes: int = 8 * 1024 * 1024
     share_link_max_hours: int = 24 * 30
     celery_task_always_eager: bool = False
     worker_metrics_port: int = 9101  # 0 disables the worker's Prometheus endpoint

@@ -1,5 +1,9 @@
 """Fetch a job posting URL safely and extract its main text.
 
+URLs from Greenhouse, Lever, Ashby and SmartRecruiters go to the board's public posting
+API first (see `job_boards`); anything else, or a failed API call, uses the generic
+page fetch. Both paths share one download function, so the guards below cover both.
+
 SSRF guards: only http/https, every hop's host must resolve exclusively to public
 addresses, redirects are followed manually (and re-checked), proxies from the
 environment are ignored, responses are size-capped and time-limited (per read and in
@@ -12,6 +16,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import logging
 import re
 import socket
 import time
@@ -20,6 +25,10 @@ from urllib.parse import urljoin, urlsplit
 
 import httpx
 from bs4 import BeautifulSoup
+
+from roletailor.services import job_boards
+
+log = logging.getLogger(__name__)
 
 MAX_REDIRECTS = 4
 MIN_TEXT_CHARS = 200
@@ -90,12 +99,20 @@ def _pinned_request(client: httpx.Client, url: str) -> httpx.Request:
     return client.build_request("GET", target, headers={"Host": host_header}, extensions=extensions)
 
 
-def _download(url: str, *, timeout: float, max_bytes: int, transport: httpx.BaseTransport | None,
-              total_seconds: float | None = None):
-    headers = {"User-Agent": "RoleTailorBot/1.0 (+job description fetch)", "Accept": "text/html"}
+_HTML = ("text/html", ("html", "text/plain"))
+_JSON = ("application/json", ("json",))
+
+
+def _download(
+    url: str, *, timeout: float, max_bytes: int, transport: httpx.BaseTransport | None,
+    kind: tuple[str, tuple[str, ...]] = _HTML, deadline: float | None = None,
+):
+    accept, allowed_types = kind
+    headers = {"User-Agent": "RoleTailorBot/1.0 (+job description fetch)", "Accept": accept}
     # `timeout` bounds each connect and read; the deadline bounds the whole fetch, so a
     # server that drips bytes cannot hold a request thread open.
-    deadline = time.monotonic() + (total_seconds if total_seconds is not None else timeout * 2.5)
+    if deadline is None:
+        deadline = time.monotonic() + timeout * 2.5
     with httpx.Client(
         timeout=timeout, follow_redirects=False, trust_env=False, transport=transport,
         headers=headers,
@@ -111,7 +128,7 @@ def _download(url: str, *, timeout: float, max_bytes: int, transport: httpx.Base
                 if response.status_code != 200:
                     raise JobFetchError(f"status {response.status_code}")
                 content_type = response.headers.get("content-type", "")
-                if "html" not in content_type and "text/plain" not in content_type:
+                if not any(allowed in content_type for allowed in allowed_types):
                     raise JobFetchError("unsupported content type")
                 body = bytearray()
                 for chunk in response.iter_bytes():
@@ -131,6 +148,10 @@ def _clean(text: str) -> str:
     return "\n".join(line for line in lines if line)
 
 
+def _str_or_none(value: object) -> str | None:
+    return value if isinstance(value, str) else None
+
+
 def _is_job_posting(item: object) -> bool:
     if not isinstance(item, dict) or not item.get("description"):
         return False
@@ -147,26 +168,28 @@ def _json_ld_job(soup: BeautifulSoup) -> FetchedJob | None:
         if isinstance(data, list):
             candidates = data
         elif isinstance(data, dict):
-            candidates = [data, *data.get("@graph", [])]
+            graph = data.get("@graph")
+            candidates = [data, *(graph if isinstance(graph, list) else [])]
         else:
             continue
         for item in candidates:
             if _is_job_posting(item):
                 org = item.get("hiringOrganization")
-                text = BeautifulSoup(item["description"], "html.parser").get_text("\n")
                 return FetchedJob(
-                    text=_clean(text),
-                    title=item.get("title"),
-                    company=org.get("name") if isinstance(org, dict) else None,
+                    text=job_boards.html_to_text(item["description"]),
+                    title=_str_or_none(item.get("title")),
+                    company=_str_or_none(org.get("name")) if isinstance(org, dict) else None,
                 )
     return None
 
 
-def extract_job(html: str) -> FetchedJob:
+def extract_job(html: str, *, structured_only: bool = False) -> FetchedJob:
     soup = BeautifulSoup(html, "html.parser")
     structured = _json_ld_job(soup)
     if structured and len(structured.text) >= MIN_TEXT_CHARS:
         return structured
+    if structured_only:
+        raise JobFetchError("no structured job posting on the page")
     og_title = soup.find("meta", property="og:title")
     title = (og_title.get("content") if og_title else None) or (
         soup.title.string.strip() if soup.title and soup.title.string else None
@@ -180,14 +203,69 @@ def extract_job(html: str) -> FetchedJob:
     return FetchedJob(text=text, title=title, company=None)
 
 
-def fetch_job_page(
-    url: str, *, timeout: float, max_bytes: int, transport: httpx.BaseTransport | None = None,
-    total_seconds: float | None = None,
+def _fetch_from_board(
+    request: job_boards.BoardRequest, *, timeout: float, max_bytes: int, transport: httpx.BaseTransport | None,
+    deadline: float | None = None,
+) -> FetchedJob:
+    try:
+        body, _ = _download(request.api_url, timeout=timeout, max_bytes=max_bytes, transport=transport, kind=_JSON,
+                            deadline=deadline)
+        job = request.parse(json.loads(body))
+    except httpx.HTTPError as exc:
+        # The transport error text can describe internal network state; keep it out of the reply.
+        raise JobFetchError(f"could not connect to the {request.board} API") from exc
+    except job_boards.BoardParseError as exc:  # our own wording, safe to show
+        raise JobFetchError(f"unreadable {request.board} API response: {exc}") from exc
+    except (ValueError, RecursionError) as exc:  # RecursionError: absurdly nested JSON
+        raise JobFetchError(f"unreadable {request.board} API response") from exc
+    if len(job.text) < MIN_TEXT_CHARS:
+        raise JobFetchError(f"{request.board} API returned no job description")
+    return FetchedJob(text=job.text, title=job.title, company=job.company)
+
+
+def _fetch_page(
+    url: str, *, timeout: float, max_bytes: int, transport: httpx.BaseTransport | None, structured_only: bool = False,
+    deadline: float | None = None,
 ) -> FetchedJob:
     try:
         body, encoding = _download(url, timeout=timeout, max_bytes=max_bytes, transport=transport,
-                                   total_seconds=total_seconds)
+                                   deadline=deadline)
     except httpx.HTTPError as exc:
         # The transport error text can describe internal network state; keep it out of the reply.
         raise JobFetchError("could not connect to the page") from exc
-    return extract_job(body.decode(encoding, errors="replace"))
+    return extract_job(body.decode(encoding, errors="replace"), structured_only=structured_only)
+
+
+def fetch_job_page(
+    url: str,
+    *,
+    timeout: float,
+    max_bytes: int,
+    board_max_bytes: int | None = None,
+    transport: httpx.BaseTransport | None = None,
+    total_seconds: float | None = None,
+) -> FetchedJob:
+    """Fetch a job posting, using the job board's public API when the URL is from a known board.
+    `total_seconds` is the wall-clock budget for everything: both attempts and all redirects."""
+    deadline = time.monotonic() + (total_seconds if total_seconds is not None else timeout * 2.5)
+    board = job_boards.match(url)
+    if board is None:
+        return _fetch_page(url, timeout=timeout, max_bytes=max_bytes, transport=transport, deadline=deadline)
+
+    def from_api() -> FetchedJob:
+        return _fetch_from_board(board, timeout=timeout, max_bytes=board_max_bytes or max_bytes, transport=transport,
+                                 deadline=deadline)
+
+    def from_page() -> FetchedJob:
+        # On a page-first board the generic text fallback would only see an app shell.
+        return _fetch_page(
+            url, timeout=timeout, max_bytes=max_bytes, transport=transport, structured_only=board.page_first,
+            deadline=deadline,
+        )
+
+    first, second = (from_page, from_api) if board.page_first else (from_api, from_page)
+    try:
+        return first()
+    except JobFetchError as exc:
+        log.info("job board fetch fell back: board=%s page_first=%s reason=%s", board.board, board.page_first, exc)
+    return second()
