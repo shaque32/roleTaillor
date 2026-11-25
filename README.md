@@ -50,3 +50,4 @@ The eval fails any case where a canary term (a job keyword the resume does not h
 - To change a model or a stage's tier, edit `config/models.yaml`, then run the live eval before and after.
 - To change a prompt, add `backend/roletailor/ai/prompts/<stage>.v<N+1>.md`. Never edit a shipped version. To roll back, pin the previous version under `prompt_pins`.
 - Each model call writes one `ai_metrics` row with the model, prompt version, routing reason, tokens, cost and latency.
+- Dashboards and alerts on cost, latency, errors and fabrication attempts: see `docs/monitoring.md` and `docs/runbooks/ai-alerts.md`.

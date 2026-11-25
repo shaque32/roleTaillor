@@ -10,12 +10,73 @@ import os
 from prometheus_client import CollectorRegistry, Counter, Histogram, start_http_server
 from prometheus_client.multiprocess import MultiProcessCollector
 
+from roletailor.domain.models import TailoringResult
+from roletailor.pipeline.orchestrator import BLOCKING_RULES
+
 WORKFLOW_RUNS = Counter(
     "roletailor_workflow_runs_total", "Tailoring runs by outcome", ["outcome"]
 )
 WORKFLOW_RUN_SECONDS = Histogram(
     "roletailor_workflow_run_seconds", "Tailoring run duration", buckets=(5, 15, 30, 60, 120, 300, 600)
 )
+GENERATION_COST = Histogram(
+    "roletailor_generation_cost_usd", "AI cost of completed generations",
+    buckets=(0.005, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.08, 0.10, 0.15, 0.25, 0.5, 1),
+)
+GENERATION_FAILED_COST = Counter(
+    "roletailor_generation_failed_cost_usd_total", "AI spend of failed, retried or discarded runs"
+)
+PLANNED_BLOCKS = Counter("roletailor_validation_planned_blocks_total", "Blocks planned for rewriting")
+FLAGGED_BLOCKS = Counter(
+    "roletailor_validation_flagged_blocks_total", "Blocks flagged by a blocking rule", ["rule"]
+)
+REVERTED_BLOCKS = Counter(
+    "roletailor_validation_reverted_blocks_total", "Blocks reverted to original by a rule", ["rule"]
+)
+GENERATION_CHECKS = Counter(
+    "roletailor_generation_checks_total", "Per-generation checks by result", ["check", "result"]
+)
+
+# Create the label children up front so the first increment is visible to rate()/increase().
+for _rule in BLOCKING_RULES:
+    FLAGGED_BLOCKS.labels(_rule)
+    REVERTED_BLOCKS.labels(_rule)
+for _outcome in ("completed", "failed", "retried", "skipped", "discarded"):
+    WORKFLOW_RUNS.labels(_outcome)
+
+
+def add_failed_cost(usd: float) -> None:
+    """Count AI spend of a run that failed, was retried or was discarded."""
+    if usd > 0:
+        GENERATION_FAILED_COST.inc(usd)
+
+
+def observe_generation(result: TailoringResult) -> None:
+    """Record cost, validation and check metrics of a completed generation."""
+    by_rule = {o.rule_key: o for o in result.validations}
+    GENERATION_COST.observe(result.total_cost_usd)
+    coverage = by_rule.get("pipeline.coverage")
+    planned = int(coverage.details.get("planned_blocks", 0)) if coverage else 0
+    PLANNED_BLOCKS.inc(planned)
+    for rule in BLOCKING_RULES:
+        outcome = by_rule.get(rule)
+        if outcome is None:
+            continue
+        if planned and outcome.score is not None:
+            FLAGGED_BLOCKS.labels(rule).inc(round((1 - outcome.score / 100) * planned))
+        REVERTED_BLOCKS.labels(rule).inc(len(outcome.details.get("reverted_to_original", [])))
+
+    page = by_rule.get("layout.page_limit")
+    if page is not None:
+        skipped = "skipped" in page.details
+        GENERATION_CHECKS.labels("page_limit", "skipped" if skipped else "pass" if page.passed else "fail").inc()
+    degraded = by_rule.get("pipeline.degraded")
+    for check, key in (("degraded_structure", "structure_heuristic"), ("degraded_job", "job_heuristic")):
+        flagged = bool(degraded and degraded.details.get(key))
+        GENERATION_CHECKS.labels(check, "fail" if flagged else "pass").inc()
+    doc = by_rule.get("authenticity.document")
+    if doc is not None and doc.score is not None and doc.threshold is not None:
+        GENERATION_CHECKS.labels("document_authenticity", "fail" if doc.score < doc.threshold else "pass").inc()
 
 
 def start_metrics_server(port: int) -> None:

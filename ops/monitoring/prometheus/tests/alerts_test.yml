@@ -1,0 +1,106 @@
+# promtool unit tests: see docs/monitoring.md for the docker one-liner.
+rule_files:
+  - ../rules/recording.yml
+  - ../rules/alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  - name: cost high fires at 8 cents per generation
+    interval: 1m
+    input_series:
+      - series: 'roletailor_generation_cost_usd_count{job="roletailor-worker",instance="w1:9101"}'
+        values: '0+10x100'
+      - series: 'roletailor_generation_cost_usd_sum{job="roletailor-worker",instance="w1:9101"}'
+        values: '0+0.8x100'
+    alert_rule_test:
+      - eval_time: 75m
+        alertname: GenerationCostHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              area: cost
+            exp_annotations:
+              summary: Mean AI cost per generation is above $0.06
+              description: 'Mean cost per generation over 30m is $0.080 (target about $0.04).'
+              runbook_url: docs/runbooks/ai-alerts.md#generationcosthigh
+      - eval_time: 75m
+        alertname: GenerationCostCritical
+        exp_alerts: []
+
+  - name: cost high does not fire at 3 cents per generation
+    interval: 1m
+    input_series:
+      - series: 'roletailor_generation_cost_usd_count{job="roletailor-worker",instance="w1:9101"}'
+        values: '0+10x100'
+      - series: 'roletailor_generation_cost_usd_sum{job="roletailor-worker",instance="w1:9101"}'
+        values: '0+0.3x100'
+    alert_rule_test:
+      - eval_time: 75m
+        alertname: GenerationCostHigh
+        exp_alerts: []
+
+  - name: fabrication attempt rate fires at 20 percent, other rules ignored
+    interval: 1m
+    input_series:
+      - series: 'roletailor_validation_planned_blocks_total{job="roletailor-worker",instance="w1:9101"}'
+        values: '0+10x200'
+      - series: 'roletailor_validation_flagged_blocks_total{job="roletailor-worker",instance="w1:9101",rule="facts.numbers"}'
+        values: '0+2x200'
+      - series: 'roletailor_validation_flagged_blocks_total{job="roletailor-worker",instance="w1:9101",rule="layout.length"}'
+        values: '0+5x200'
+    alert_rule_test:
+      - eval_time: 100m
+        alertname: FabricationAttemptRateHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              area: fabrication
+            exp_annotations:
+              summary: The fabrication gates are catching more than 15% of planned blocks
+              description: 'Fabrication attempt ratio over 1h is 0.200.'
+              runbook_url: docs/runbooks/ai-alerts.md#fabricationattemptratehigh
+
+  - name: failure rate fires at 10 percent failed runs
+    interval: 1m
+    input_series:
+      - series: 'roletailor_workflow_runs_total{job="roletailor-worker",instance="w1:9101",outcome="completed"}'
+        values: '0+9x100'
+      - series: 'roletailor_workflow_runs_total{job="roletailor-worker",instance="w1:9101",outcome="failed"}'
+        values: '0+1x100'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: GenerationFailureRateHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              area: errors
+            exp_annotations:
+              summary: More than 5% of generations are failing
+              description: 'Failure ratio over 15m is 0.100.'
+              runbook_url: docs/runbooks/ai-alerts.md#generationfailureratehigh
+      - eval_time: 40m
+        alertname: GenerationFailureRateCritical
+        exp_alerts: []
+
+  - name: worker down fires after 5 minutes
+    interval: 1m
+    input_series:
+      - series: 'up{job="roletailor-worker",instance="worker:9101"}'
+        values: '1x10 0x30'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: WorkerMetricsDown
+        exp_alerts: []
+      - eval_time: 30m
+        alertname: WorkerMetricsDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              area: availability
+              job: roletailor-worker
+              instance: worker:9101
+            exp_annotations:
+              summary: Worker metrics endpoint worker:9101 is down
+              description: 'Prometheus cannot scrape worker:9101 (job roletailor-worker). Generations may not be running.'
+              runbook_url: docs/runbooks/ai-alerts.md#workermetricsdown

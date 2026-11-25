@@ -1,0 +1,230 @@
+# Alert rules. Thresholds and rationale: docs/monitoring.md. Runbooks: docs/runbooks/ai-alerts.md.
+# Every alert has labels severity (warning|critical) and area (used by Alertmanager
+# inhibition: a critical alert silences warnings of the same area).
+groups:
+  - name: roletailor_cost
+    rules:
+      - alert: GenerationCostHigh
+        expr: |
+          roletailor:generation_cost_usd:mean_30m > 0.06
+          and roletailor:generation_cost_usd:count_30m >= 3
+        for: 30m
+        labels: {severity: warning, area: cost}
+        annotations:
+          summary: Mean AI cost per generation is above $0.06
+          description: 'Mean cost per generation over 30m is ${{ $value | printf "%.3f" }} (target about $0.04).'
+          runbook_url: docs/runbooks/ai-alerts.md#generationcosthigh
+
+      - alert: GenerationCostCritical
+        expr: |
+          roletailor:generation_cost_usd:mean_30m > 0.10
+          and roletailor:generation_cost_usd:count_30m >= 3
+        for: 15m
+        labels: {severity: critical, area: cost}
+        annotations:
+          summary: Mean AI cost per generation is above $0.10
+          description: 'Mean cost per generation over 30m is ${{ $value | printf "%.3f" }} (target about $0.04).'
+          runbook_url: docs/runbooks/ai-alerts.md#generationcostcritical
+
+      - alert: DailyAISpendOverBudget
+        expr: roletailor:ai_spend_usd:increase_24h > roletailor:ai_spend_budget_usd:daily
+        for: 5m
+        labels: {severity: warning, area: cost}
+        annotations:
+          summary: AI spend in the last 24h is over the daily budget
+          description: 'AI spend over the last 24h is ${{ $value | printf "%.2f" }}. The budget is set in roletailor:ai_spend_budget_usd:daily.'
+          runbook_url: docs/runbooks/ai-alerts.md#dailyaispendoverbudget
+
+      - alert: AISpendSpike
+        expr: |
+          roletailor:ai_spend_usd:increase_1h > 3 * (roletailor:ai_spend_usd:increase_24h / 24)
+          and roletailor:ai_spend_usd:increase_1h > 1
+        for: 10m
+        labels: {severity: warning, area: cost}
+        annotations:
+          summary: AI spend in the last hour is more than 3x the trailing hourly average
+          description: 'AI spend over the last hour is ${{ $value | printf "%.2f" }}, above 3x the 24h hourly average.'
+          runbook_url: docs/runbooks/ai-alerts.md#aispendspike
+
+      - alert: FailedRunSpend
+        expr: sum(increase(roletailor_generation_failed_cost_usd_total[1h])) > 2
+        for: 5m
+        labels: {severity: warning, area: cost}
+        annotations:
+          summary: Failed or discarded runs spent more than $2 in the last hour
+          description: 'Failed runs spent ${{ $value | printf "%.2f" }} on AI calls in the last hour.'
+          runbook_url: docs/runbooks/ai-alerts.md#failedrunspend
+
+  - name: roletailor_latency
+    rules:
+      - alert: GenerationLatencyHigh
+        expr: |
+          roletailor:workflow_run_seconds:p95_15m > 120
+          and roletailor:workflow_runs:increase_15m >= 3
+        for: 15m
+        labels: {severity: warning, area: latency}
+        annotations:
+          summary: p95 generation time is above 120s
+          description: 'p95 run time over 15m is {{ $value | printf "%.0f" }}s.'
+          runbook_url: docs/runbooks/ai-alerts.md#generationlatencyhigh
+
+      - alert: GenerationLatencyCritical
+        expr: |
+          roletailor:workflow_run_seconds:p95_15m > 300
+          and roletailor:workflow_runs:increase_15m >= 3
+        for: 10m
+        labels: {severity: critical, area: latency}
+        annotations:
+          summary: p95 generation time is above 300s
+          description: 'p95 run time over 15m is {{ $value | printf "%.0f" }}s.'
+          runbook_url: docs/runbooks/ai-alerts.md#generationlatencycritical
+
+      - alert: AIStageLatencyHigh
+        expr: |
+          roletailor:ai_call_seconds:p95_15m > 30
+          and on (stage, provider) roletailor:ai_call_seconds:count_15m >= 5
+        for: 15m
+        labels: {severity: warning, area: latency}
+        annotations:
+          summary: p95 AI call latency is above 30s for {{ $labels.stage }} on {{ $labels.provider }}
+          description: 'p95 call latency for stage {{ $labels.stage }} on {{ $labels.provider }} is {{ $value | printf "%.1f" }}s (request timeout is 45s).'
+          runbook_url: docs/runbooks/ai-alerts.md#aistagelatencyhigh
+
+  - name: roletailor_errors
+    rules:
+      - alert: GenerationFailureRateHigh
+        expr: |
+          roletailor:workflow_failure_ratio:15m > 0.05
+          and roletailor:workflow_runs:increase_15m >= 5
+        for: 15m
+        labels: {severity: warning, area: errors}
+        annotations:
+          summary: More than 5% of generations are failing
+          description: 'Failure ratio over 15m is {{ $value | printf "%.3f" }}.'
+          runbook_url: docs/runbooks/ai-alerts.md#generationfailureratehigh
+
+      - alert: GenerationFailureRateCritical
+        expr: |
+          sum(rate(roletailor_workflow_runs_total{outcome="failed"}[10m]))
+          / sum(rate(roletailor_workflow_runs_total{outcome=~"completed|failed"}[10m])) > 0.20
+          and sum(increase(roletailor_workflow_runs_total{outcome=~"completed|failed"}[10m])) >= 5
+        for: 10m
+        labels: {severity: critical, area: errors}
+        annotations:
+          summary: More than 20% of generations are failing
+          description: 'Failure ratio over 10m is {{ $value | printf "%.3f" }}.'
+          runbook_url: docs/runbooks/ai-alerts.md#generationfailureratecritical
+
+      - alert: AIProviderErrorRateHigh
+        expr: |
+          roletailor:ai_call_failure_ratio:10m > 0.20
+          and on (provider) roletailor:ai_calls:count_10m >= 10
+        for: 10m
+        labels: {severity: warning, area: errors}
+        annotations:
+          summary: More than 20% of calls to {{ $labels.provider }} are failing
+          description: 'Failed or timed out call ratio for {{ $labels.provider }} over 10m is {{ $value | printf "%.3f" }}.'
+          runbook_url: docs/runbooks/ai-alerts.md#aiprovidererrorratehigh
+
+      - alert: AIFallbackRateHigh
+        expr: |
+          roletailor:ai_fallback_ratio:15m > 0.25
+          and roletailor:ai_calls:count_15m >= 10
+        for: 15m
+        labels: {severity: warning, area: errors}
+        annotations:
+          summary: More than 25% of AI calls needed failover or escalation
+          description: 'Fallback ratio over 15m is {{ $value | printf "%.3f" }}.'
+          runbook_url: docs/runbooks/ai-alerts.md#aifallbackratehigh
+
+      - alert: PipelineDegraded
+        expr: |
+          sum(increase(roletailor_generation_checks_total{check=~"degraded_structure|degraded_job", result="fail"}[30m]))
+          / sum(increase(roletailor_workflow_runs_total{outcome="completed"}[30m])) > 0.10
+          and sum(increase(roletailor_workflow_runs_total{outcome="completed"}[30m])) >= 5
+        for: 10m
+        labels: {severity: warning, area: errors}
+        annotations:
+          summary: Resume or job parsing fell back to a degraded result in over 10% of runs
+          description: 'Degraded structure or job checks failed for {{ $value | printf "%.3f" }} of completed runs over 30m.'
+          runbook_url: docs/runbooks/ai-alerts.md#pipelinedegraded
+
+  - name: roletailor_fabrication
+    rules:
+      - alert: FabricationAttemptRateHigh
+        expr: |
+          roletailor:fabrication_attempt_ratio:1h > 0.15
+          and roletailor:validation_planned_blocks:increase_1h >= 20
+        for: 30m
+        labels: {severity: warning, area: fabrication}
+        annotations:
+          summary: The fabrication gates are catching more than 15% of planned blocks
+          description: 'Fabrication attempt ratio over 1h is {{ $value | printf "%.3f" }}.'
+          runbook_url: docs/runbooks/ai-alerts.md#fabricationattemptratehigh
+
+      - alert: FabricationAttemptRateRegression
+        expr: |
+          roletailor:fabrication_attempt_ratio:6h > 2 * roletailor:fabrication_attempt_ratio:7d
+          and roletailor:fabrication_attempt_ratio:6h > 0.05
+          and roletailor:validation_planned_blocks:increase_1h >= 20
+        for: 30m
+        labels: {severity: warning, area: fabrication}
+        annotations:
+          summary: Fabrication attempt rate is more than double the 7 day baseline
+          description: 'Fabrication attempt ratio over 6h is {{ $value | printf "%.3f" }}, more than 2x the 7d ratio. Check for a recent prompt or model change.'
+          runbook_url: docs/runbooks/ai-alerts.md#fabricationattemptrateregression
+
+      - alert: ValidationRevertRateHigh
+        expr: |
+          roletailor:validation_reverted_ratio:1h > 0.10
+          and on () roletailor:validation_planned_blocks:increase_1h >= 20
+        for: 30m
+        labels: {severity: warning, area: fabrication}
+        annotations:
+          summary: Rule {{ $labels.rule }} reverted more than 10% of blocks to the original text
+          description: 'Rule {{ $labels.rule }} reverted {{ $value | printf "%.3f" }} of planned blocks over 1h.'
+          runbook_url: docs/runbooks/ai-alerts.md#validationrevertratehigh
+
+      - alert: PageLimitFailures
+        expr: |
+          sum(increase(roletailor_generation_checks_total{check="page_limit", result="fail"}[1h]))
+          / sum(increase(roletailor_generation_checks_total{check="page_limit", result=~"pass|fail"}[1h])) > 0.10
+          and sum(increase(roletailor_generation_checks_total{check="page_limit", result=~"pass|fail"}[1h])) >= 10
+        for: 15m
+        labels: {severity: warning, area: fabrication}
+        annotations:
+          summary: More than 10% of generated resumes exceed the page limit
+          description: 'Page limit failure ratio over 1h is {{ $value | printf "%.3f" }}.'
+          runbook_url: docs/runbooks/ai-alerts.md#pagelimitfailures
+
+  - name: roletailor_availability
+    rules:
+      - alert: WorkerMetricsDown
+        expr: up{job="roletailor-worker"} == 0
+        for: 5m
+        labels: {severity: critical, area: availability}
+        annotations:
+          summary: Worker metrics endpoint {{ $labels.instance }} is down
+          description: 'Prometheus cannot scrape {{ $labels.instance }} (job roletailor-worker). Generations may not be running.'
+          runbook_url: docs/runbooks/ai-alerts.md#workermetricsdown
+
+      - alert: ApiDown
+        expr: up{job="roletailor-api"} == 0
+        for: 2m
+        labels: {severity: critical, area: availability}
+        annotations:
+          summary: API {{ $labels.instance }} is down
+          description: 'Prometheus cannot scrape {{ $labels.instance }} (job roletailor-api).'
+          runbook_url: docs/runbooks/ai-alerts.md#apidown
+
+      - alert: NoGenerationsCompleted
+        expr: |
+          sum(increase(roletailor_workflow_requests_total{outcome="accepted"}[30m])) > 0
+          unless
+          sum(increase(roletailor_workflow_runs_total{outcome="completed"}[30m])) > 0
+        for: 5m
+        labels: {severity: warning, area: availability}
+        annotations:
+          summary: Generations were requested but none completed in 30m
+          description: '{{ $value | printf "%.0f" }} accepted workflow requests in the last 30m and no completed runs. Check the queue and the worker.'
+          runbook_url: docs/runbooks/ai-alerts.md#nogenerationscompleted
