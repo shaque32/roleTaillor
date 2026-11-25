@@ -139,14 +139,14 @@ groups:
 
       - alert: PipelineDegraded
         expr: |
-          sum(increase(roletailor_generation_checks_total{check=~"degraded_structure|degraded_job", result="fail"}[30m]))
+          sum(increase(roletailor_generation_checks_total{check="degraded_any", result="fail"}[30m]))
           / sum(increase(roletailor_workflow_runs_total{outcome="completed"}[30m])) > 0.10
           and sum(increase(roletailor_workflow_runs_total{outcome="completed"}[30m])) >= 5
         for: 10m
         labels: {severity: warning, area: errors}
         annotations:
           summary: Resume or job parsing fell back to a degraded result in over 10% of runs
-          description: 'Degraded structure or job checks failed for {{ $value | printf "%.3f" }} of completed runs over 30m.'
+          description: '{{ $value | printf "%.3f" }} of completed runs over 30m used a degraded resume or job parse.'
           runbook_url: docs/runbooks/ai-alerts.md#pipelinedegraded
 
   - name: roletailor_fabrication

@@ -70,17 +70,17 @@ groups:
         expr: sum(increase(roletailor_validation_planned_blocks_total[1h]))
       - record: roletailor:fabrication_attempt_ratio:1h
         expr: |
-          sum(increase(roletailor_validation_flagged_blocks_total{rule=~"facts[.](numbers|terms|keywords|claims)"}[1h]))
+          sum(increase(roletailor_validation_fabrication_blocks_total[1h]))
           /
           sum(increase(roletailor_validation_planned_blocks_total[1h]))
       - record: roletailor:fabrication_attempt_ratio:6h
         expr: |
-          sum(increase(roletailor_validation_flagged_blocks_total{rule=~"facts[.](numbers|terms|keywords|claims)"}[6h]))
+          sum(increase(roletailor_validation_fabrication_blocks_total[6h]))
           /
           sum(increase(roletailor_validation_planned_blocks_total[6h]))
       - record: roletailor:fabrication_attempt_ratio:7d
         expr: |
-          sum(increase(roletailor_validation_flagged_blocks_total{rule=~"facts[.](numbers|terms|keywords|claims)"}[7d]))
+          sum(increase(roletailor_validation_fabrication_blocks_total[7d]))
           /
           sum(increase(roletailor_validation_planned_blocks_total[7d]))
       - record: roletailor:validation_reverted_ratio:1h

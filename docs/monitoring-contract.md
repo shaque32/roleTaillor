@@ -37,7 +37,11 @@ retried and, if still failing, reverted to the original text, so a flag is an
 attempted fabrication that the gates stopped. The other blocking rules
 (`layout.length`, `authenticity.phrases`, `authenticity.stuffing`) are quality gates.
 
-Fabrication attempt rate = blocks flagged by any fabrication rule / planned blocks.
+Fabrication attempt rate = distinct blocks flagged by any fabrication rule / planned blocks.
+A block that trips several fabrication rules counts once. The pipeline writes that distinct
+count per iteration as a `pipeline.fabrication` validation row (`details.flagged_blocks`,
+`details.reverted_blocks`); per-rule counts overlap and are for breakdown only, never summed
+into the rate.
 
 Per generation, from `TailoringResult.validations`:
 - planned blocks: `details.planned_blocks` of the `pipeline.coverage` outcome.
@@ -73,11 +77,13 @@ Generations, emitted in the worker after a run:
 | `roletailor_validation_planned_blocks_total` | counter | none | completed runs |
 | `roletailor_validation_flagged_blocks_total` | counter | rule (the 7 blocking rules) | completed runs |
 | `roletailor_validation_reverted_blocks_total` | counter | rule | completed runs |
+| `roletailor_validation_fabrication_blocks_total` | counter | none | completed runs, distinct blocks flagged by any fabrication rule |
 | `roletailor_generation_checks_total` | counter | check, result | completed runs |
 
 `roletailor_generation_checks_total` values: check `page_limit` (result pass, fail,
 skipped when details has `skipped`), `degraded_structure` and `degraded_job` (result
-fail when the `pipeline.degraded` outcome flags it, else pass), `document_authenticity`
+fail when the `pipeline.degraded` outcome flags it, else pass), `degraded_any` (fail when
+either is flagged, so a generation counts once), `document_authenticity`
 (result fail when the `authenticity.document` score is below its threshold, else pass).
 
 ## Recording rules (Prometheus)

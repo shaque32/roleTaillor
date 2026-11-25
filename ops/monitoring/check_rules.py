@@ -20,9 +20,23 @@ def err(msg):
     errors.append(msg)
 
 
+class StrictLoader(yaml.SafeLoader):
+    """SafeLoader that rejects duplicate mapping keys instead of keeping the last one."""
+
+    def construct_mapping(self, node, deep=False):
+        seen = set()
+        for key_node, _ in node.value:
+            key = self.construct_object(key_node, deep=deep)
+            if key in seen:
+                raise yaml.constructor.ConstructorError(
+                    None, None, f"duplicate key {key!r}", key_node.start_mark)
+            seen.add(key)
+        return super().construct_mapping(node, deep=deep)
+
+
 def load(path):
     try:
-        return yaml.safe_load(path.read_text())
+        return yaml.load(path.read_text(), Loader=StrictLoader)  # noqa: S506 - SafeLoader subclass
     except Exception as e:  # noqa: BLE001
         err(f"{path}: invalid YAML: {e}")
         return None

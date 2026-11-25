@@ -148,3 +148,20 @@ def test_failed_cost_counter():
     wm.add_failed_cost(0.0)
     wm.add_failed_cost(0.03)
     assert val("roletailor_generation_failed_cost_usd_total") == pytest.approx(before + 0.03)
+
+
+def test_fabrication_blocks_count_once_across_rules():
+    """A block that trips two fabrication gates is one attempted fabrication, not two."""
+    from roletailor.pipeline.orchestrator import _rule_outcomes
+    from roletailor.pipeline.validation.rules import Violation
+
+    log = {
+        "facts.numbers": [Violation(rule_key="facts.numbers", block_id="b1", detail="x"),
+                          Violation(rule_key="facts.numbers", block_id="b2", detail="x")],
+        "facts.keywords": [Violation(rule_key="facts.keywords", block_id="b1", detail="x")],
+        "layout.length": [Violation(rule_key="layout.length", block_id="b3", detail="x")],
+    }
+    by_rule = {o.rule_key: o for o in _rule_outcomes(log, ["b2"], 10)}
+    fabrication = by_rule["pipeline.fabrication"]
+    assert fabrication.details == {"flagged_blocks": 2, "planned_blocks": 10, "reverted_blocks": 1}
+    assert fabrication.score == 80.0

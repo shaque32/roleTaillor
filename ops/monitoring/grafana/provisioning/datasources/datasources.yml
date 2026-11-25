@@ -24,4 +24,4 @@ datasources:
       postgresVersion: 1600
       timescaledb: false
     secureJsonData:
-      password: $__env{RT_METRICS_DB_PASSWORD}
+      password: $RT_METRICS_DB_PASSWORD

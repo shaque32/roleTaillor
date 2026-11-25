@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import threading
+import time
 import uuid
 from typing import TypeVar
 
@@ -90,11 +91,13 @@ class Gateway:
                                  json_schema=schema, max_tokens=policy.max_tokens,
                                  timeout_s=self.router.timeout_s)
                 provider = self.providers[route.spec.provider]
+                started = time.monotonic()
                 try:
                     resp = provider.complete(route.spec, req)
                 except ProviderError as e:
                     status = "timed_out" if e.code == "timeout" else "failed"
-                    self._record(label, route, prompt, status, Usage(), 0, e.code, route.reason)
+                    waited_ms = int((time.monotonic() - started) * 1000)  # time lost before failing
+                    self._record(label, route, prompt, status, Usage(), waited_ms, e.code, route.reason)
                     self.router.breaker.failure(route.spec.key)
                     last_error = e.code
                     break  # fail over to the next model

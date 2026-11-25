@@ -56,15 +56,15 @@ SELECT
 FROM calls
 GROUP BY bucket, stage, provider, model, tier, status, route;
 
--- One row per workflow that made AI calls. Fabrication counts pair each blocking-rule
--- row with the pipeline.coverage row written in the same transaction (same created_at),
--- because validation rows carry no iteration column.
+-- One row per workflow that made AI calls. planned_blocks sums the pipeline.coverage
+-- rows and fabrication_flagged_blocks the pipeline.fabrication rows (one each per iteration).
 CREATE VIEW roletailor_ops.generations AS
 WITH call_agg AS (
     SELECT
         m.workflow_id,
         min(m.organization_id::text)::uuid AS organization_id,
-        min(m.created_at) AS started_at,
+        -- created_at is when a call finished, so step back by its latency for the start.
+        min(m.created_at - make_interval(secs => COALESCE(m.latency_ms, 0) / 1000.0)) AS started_at,
         max(m.created_at) AS finished_at,
         count(*)::bigint AS ai_calls,
         count(*) FILTER (WHERE m.status IN ('failed', 'timed_out'))::bigint AS failed_calls,
@@ -83,9 +83,10 @@ coverage AS (
 ),
 rules AS (
     SELECT r.workflow_id,
-           sum(CASE WHEN r.rule_key IN ('facts.numbers', 'facts.terms', 'facts.keywords', 'facts.claims')
-                         AND r.score IS NOT NULL AND c.planned > 0
-                    THEN round((1 - r.score / 100) * c.planned) ELSE 0 END)::bigint AS flagged,
+           -- pipeline.fabrication holds the distinct blocks flagged by any fabrication rule;
+           -- summing the per-rule rows would count a block once per rule it tripped.
+           sum(CASE WHEN r.rule_key = 'pipeline.fabrication'
+                    THEN COALESCE((r.details->>'flagged_blocks')::int, 0) ELSE 0 END)::bigint AS flagged,
            sum(CASE WHEN r.rule_key IN ('facts.numbers', 'facts.terms', 'facts.keywords', 'facts.claims',
                                         'layout.length', 'authenticity.phrases', 'authenticity.stuffing')
                     THEN COALESCE(jsonb_array_length(
@@ -93,7 +94,6 @@ rules AS (
                                   THEN r.details->'reverted_to_original' END), 0)
                     ELSE 0 END)::bigint AS reverted
     FROM roletailor.validation_results r
-    LEFT JOIN coverage c ON c.workflow_id = r.workflow_id AND c.created_at = r.created_at
     GROUP BY r.workflow_id
 ),
 planned AS (

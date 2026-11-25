@@ -31,7 +31,17 @@ docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up
 - Prometheus: http://localhost:9090 (Alerts and Targets pages)
 - Alertmanager: http://localhost:9093
 - Grafana: http://localhost:3001, user `admin`, password from `GRAFANA_ADMIN_PASSWORD` (default `change-me-locally`). Anonymous access is off.
-- The SQL dashboard needs the `rt_metrics` role (migration 004). Set `RT_METRICS_DB_PASSWORD` in `.env` to its password.
+- The SQL dashboard needs the `rt_metrics` role. Set `RT_METRICS_DB_PASSWORD` in `.env` to its password.
+- On a fresh database volume `db/init/00_roles.sql` creates the role before migration 004 grants it access. On an existing database the init script does not run and migration 004 skips the grants when the role is missing, so create it once as a superuser or the schema owner with CREATEROLE:
+
+```sql
+CREATE ROLE rt_metrics LOGIN PASSWORD '<password>' NOBYPASSRLS;
+GRANT CONNECT ON DATABASE roletailor TO rt_metrics;
+GRANT USAGE ON SCHEMA roletailor_ops TO rt_metrics;
+GRANT SELECT ON ALL TABLES IN SCHEMA roletailor_ops TO rt_metrics;
+```
+
+  Keep the role read-only. Never grant it writes or anything in `roletailor.*`.
 
 ## Validate rules
 
@@ -67,7 +77,7 @@ Without Docker, `python3 ops/monitoring/check_rules.py` checks structure, runboo
 | GenerationFailureRateCritical | > 20% for 10m | critical | |
 | AIProviderErrorRateHigh | per provider > 20% failed or timed out for 10m, 10 or more calls | warning | failover should absorb less |
 | AIFallbackRateHigh | > 25% failover or escalated for 15m | warning | cost and latency grow with fallbacks |
-| PipelineDegraded | degraded structure or job > 10% of completed runs, 30m | warning | |
+| PipelineDegraded | runs with a degraded structure or job parse > 10% of completed runs, 30m | warning | |
 | FabricationAttemptRateHigh | 1h ratio > 15%, 20 or more blocks, for 30m | warning | set above the eval baseline; adjust after the live eval |
 | FabricationAttemptRateRegression | 6h ratio > 2x 7d ratio and > 5% | warning | catches prompt or model regressions |
 | ValidationRevertRateHigh | any rule reverted > 10% of planned blocks, 1h | warning | |

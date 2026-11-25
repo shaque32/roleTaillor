@@ -16,11 +16,17 @@ ROUTES = {"primary", "failover", "escalated", "cache"}
 FABRICATION = {"facts.numbers", "facts.terms", "facts.keywords", "facts.claims"}
 
 
+_ROLE_URLS = {
+    "rt_app": ("RT_TEST_APP_DATABASE_URL", "postgresql://rt_app:rt_app@localhost:5432/postgres"),
+    "rt_metrics": ("RT_TEST_METRICS_DATABASE_URL", "postgresql://rt_metrics:rt_metrics@localhost:5432/postgres"),
+}
+
+
 def _url(user: str, database: str) -> str:
-    base = os.environ.get("RT_MIGRATION_DATABASE_URL", "postgresql://rt_owner:rt_owner@localhost:5432/roletailor")
-    parts = urlsplit(base.replace("postgresql+psycopg://", "postgresql://", 1))
-    host = parts.netloc.rsplit("@", 1)[-1]
-    return urlunsplit(parts._replace(netloc=f"{user}:{user}@{host}", path=f"/{database}"))
+    """The role's configured URL (credentials, host and options kept) on the test database."""
+    env, default = _ROLE_URLS[user]
+    parts = urlsplit(os.environ.get(env, default).replace("postgresql+psycopg://", "postgresql://", 1))
+    return urlunsplit(parts._replace(path=f"/{database}"))
 
 
 @pytest.fixture()
