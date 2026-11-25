@@ -3,34 +3,37 @@
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { useResource } from "@/lib/hooks";
-import { Skeleton } from "@/components/ui";
+import { cx } from "@/lib/format";
+import { Badge, Skeleton, focusRing } from "@/components/ui";
+
+const pillClass = "inline-flex items-center gap-3 rounded-full bg-white px-4 py-2 text-sm shadow-card ring-1 ring-slate-900/5";
 
 /** Small credit usage indicator from /billing/status. */
 export function BillingMeter() {
   const { data, loading, error } = useResource(() => api.billing());
-  if (loading) return <Skeleton className="h-10 w-48" />;
+  if (loading) return <Skeleton className="h-10 w-48 !rounded-full" />;
   if (error || !data) return null;
   if (data.subscription && data.subscription.status === "active") {
     return (
-      <Link href="/settings#billing" className="text-sm text-ink-muted hover:text-ink">
-        Subscription active
+      <Link href="/settings#billing" className={cx(pillClass, focusRing)} aria-label="Subscription active. Manage billing.">
+        <Badge tone="green">Subscribed</Badge>
       </Link>
     );
   }
   const limit = Math.max(1, data.free_limit);
-  const pct = Math.min(100, (data.free_used / limit) * 100);
+  const left = Math.max(0, data.free_limit - data.free_used);
+  const pct = left > 0 ? Math.min(100, (left / limit) * 100) : 100;
+  const paid = data.pay_per_use_credits;
+  const label = `${left > 0 ? `${left} of ${data.free_limit} free tailorings left` : "Free tailorings used"}${
+    paid > 0 ? `, ${paid} paid credit${paid === 1 ? "" : "s"}` : ""
+  }`;
   return (
-    <Link href="/settings#billing" className="block w-52 rounded-md text-sm" aria-label={`${data.free_used} of ${data.free_limit} free generations used`}>
-      <div className="flex justify-between text-ink-muted">
-        <span>Free generations</span>
-        <span className="tabular-nums text-ink">
-          {data.free_used}/{data.free_limit}
-        </span>
-      </div>
-      <div className="mt-1.5 h-1.5 rounded-full bg-slate-200" aria-hidden>
-        <div className={pct >= 100 ? "h-1.5 rounded-full bg-amber-500" : "h-1.5 rounded-full bg-brand-500"} style={{ width: `${pct}%` }} />
-      </div>
-      {data.pay_per_use_credits > 0 && <p className="mt-1 text-xs text-ink-muted">{data.pay_per_use_credits} paid credit(s) available</p>}
+    <Link href="/settings#billing" className={cx(pillClass, focusRing)} aria-label={label}>
+      <span className="whitespace-nowrap font-medium text-ink">{left > 0 ? `${left} free left` : "Free tailorings used"}</span>
+      <span className="h-1.5 w-16 shrink-0 rounded-full bg-surface-sunken" aria-hidden>
+        <span className={cx("block h-1.5 rounded-full", left === 0 ? "bg-amber-500" : "bg-brand-500")} style={{ width: `${pct}%` }} />
+      </span>
+      {paid > 0 && <span className="whitespace-nowrap text-ink-muted">· {paid} paid</span>}
     </Link>
   );
 }

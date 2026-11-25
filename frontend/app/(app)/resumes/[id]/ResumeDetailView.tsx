@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { ArrowLeft, CheckCircle2, Lock } from "lucide-react";
+import { CheckCircle2, Lock } from "lucide-react";
 import { api } from "@/lib/api";
 import { useResource } from "@/lib/hooks";
 import { cx, formatDate } from "@/lib/format";
@@ -40,12 +40,10 @@ export function ResumeDetailView() {
 
   return (
     <>
-      <Link href="/resumes" className="mb-4 inline-flex items-center gap-1 text-sm text-ink-muted hover:text-ink">
-        <ArrowLeft className="h-4 w-4" aria-hidden /> Resumes
-      </Link>
       <PageHeader
+        back={{ href: "/resumes", label: "Resumes" }}
         title={resume.data.name}
-        description="Check what we extracted. Tailoring only ever works from this text."
+        description="This is what we read from your file. Tailoring only ever uses this text."
         actions={versionId ? <ButtonLink href={`/tailor/new?version=${versionId}`}>Tailor this version</ButtonLink> : undefined}
       />
       <div className="grid gap-8 lg:grid-cols-[1fr_20rem]">
@@ -56,19 +54,16 @@ export function ResumeDetailView() {
             action={
               versions.length > 1 ? (
                 <Select
+                  size="sm"
                   aria-label="Version"
                   value={versionId ?? ""}
-                  onChange={(e) => {
-                    setVersionId(e.target.value);
-                    router.replace(`/resumes/${id}?version=${e.target.value}`);
+                  onChange={(vid) => {
+                    setVersionId(vid);
+                    router.replace(`/resumes/${id}?version=${vid}`);
                   }}
-                >
-                  {versions.map((x) => (
-                    <option key={x.id} value={x.id}>
-                      v{x.version_number} · {formatDate(x.created_at)}
-                    </option>
-                  ))}
-                </Select>
+                  options={versions.map((x) => ({ value: x.id, label: `v${x.version_number} · ${formatDate(x.created_at)}` }))}
+                  className="w-44"
+                />
               ) : undefined
             }
           />
@@ -82,25 +77,24 @@ export function ResumeDetailView() {
             )}
             {version.error && <Alert tone="error">{version.error.message}</Alert>}
             {v && (
-              <ol className="space-y-1.5">
+              <ol>
                 {textBlocks.map((b) => (
                   <li
                     key={b.id}
+                    title={`Block ${b.id}`}
                     className={cx(
-                      "group flex gap-3 rounded px-2 py-1 text-sm",
-                      b.is_heading ? "mt-4 font-semibold text-ink first:mt-0" : "text-ink-muted",
-                      b.is_list_item && "pl-6",
+                      "flex gap-3 py-1",
+                      b.is_heading ? "mt-5 text-base font-semibold text-ink first:mt-0" : "text-base leading-relaxed text-ink",
+                      b.is_list_item && "pl-5",
                     )}
                   >
-                    <span className="w-12 shrink-0 font-mono text-[11px] leading-5 text-ink-faint" aria-label={`Block ${b.id}`}>
-                      {b.id}
-                    </span>
-                    <span className="flex-1">
+                    <span className="sr-only">Block {b.id}: </span>
+                    <span className="min-w-0 flex-1 break-words">
                       {b.is_list_item && <span aria-hidden>• </span>}
                       {b.text}
                     </span>
                     {b.editable === false && (
-                      <span title="Contains links or special formatting; kept exactly as is." className="text-ink-faint">
+                      <span title="Contains links or special formatting; kept exactly as is." className="mt-1 text-ink-faint">
                         <Lock className="h-3.5 w-3.5" aria-label="Locked block" />
                       </span>
                     )}
@@ -111,21 +105,25 @@ export function ResumeDetailView() {
           </CardBody>
         </Card>
 
-        <div className="space-y-6">
+        <div className="order-first space-y-6 lg:order-none">
           <Card as="section">
-            <CardHeader title="Extraction findings" />
+            <CardHeader title="Things to check" />
             <CardBody className="space-y-3">
               {v && v.findings.length === 0 && (
                 <p className="flex items-center gap-2 text-sm text-emerald-700">
                   <CheckCircle2 className="h-4 w-4" aria-hidden /> Everything looks readable.
                 </p>
               )}
-              {v?.findings.map((f, i) => (
-                <Alert key={i} tone={findingTone(f)} title={f.code.replace(/_/g, " ")}>
-                  {f.detail}
-                  {f.block_id && <span className="ml-1 font-mono text-xs">({f.block_id})</span>}
-                </Alert>
-              ))}
+              {v?.findings.map((f, i) => {
+                const near = f.block_id ? v.blocks.find((x) => x.id === f.block_id)?.text : undefined;
+                const title = f.code.replace(/_/g, " ");
+                return (
+                  <Alert key={i} tone={findingTone(f)} title={title.charAt(0).toUpperCase() + title.slice(1)}>
+                    {f.detail}
+                    {near && <span className="mt-1 block text-xs opacity-80">Near: “{near.slice(0, 40)}{near.length > 40 ? "…" : ""}”</span>}
+                  </Alert>
+                );
+              })}
               {v && (
                 <p className="text-xs text-ink-muted">
                   If something is missing or wrong, fix it in your original file and upload it again, or rebuild it with the{" "}

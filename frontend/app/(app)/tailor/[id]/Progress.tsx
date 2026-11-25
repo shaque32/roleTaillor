@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check } from "lucide-react";
+import Link from "next/link";
 import type { WorkflowStatus } from "@/lib/types";
-import { cx } from "@/lib/format";
-import { Card, CardBody, Spinner } from "@/components/ui";
+import { Button, Card, Stepper } from "@/components/ui";
+import { DotBackground } from "@/components/fx/DotBackground";
+import { ShinyText } from "@/components/fx/ShinyText";
 
 const STEPS = [
   { key: "structure", label: "Reading your resume" },
@@ -12,11 +13,27 @@ const STEPS = [
   { key: "plan", label: "Matching your experience to the role" },
   { key: "rewrite", label: "Rephrasing with your own facts" },
   { key: "validate", label: "Checking nothing was invented" },
-  { key: "score", label: "Scoring and simulating a hiring manager review" },
+  { key: "score", label: "Scoring the result" },
 ];
 
 /** Calm progress state. Uses workflow.stage when the backend provides it, else estimates from elapsed time. */
-export function Progress({ status, stage, startedAt, iterating }: { status: WorkflowStatus; stage?: string | null; startedAt: number; iterating: boolean }) {
+export function Progress({
+  status,
+  stage,
+  startedAt,
+  iterating,
+  onPause,
+  onCancel,
+  compact,
+}: {
+  status: WorkflowStatus;
+  stage?: string | null;
+  startedAt: number;
+  iterating: boolean;
+  onPause?: () => void;
+  onCancel?: () => void;
+  compact?: boolean;
+}) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -27,29 +44,60 @@ export function Progress({ status, stage, startedAt, iterating }: { status: Work
   const estimated = status === "queued" ? 0 : Math.min(STEPS.length - 1, Math.floor((now - startedAt) / 9000));
   const current = byStage >= 0 ? byStage : estimated;
 
+  const bar = (
+    <div
+      role="progressbar"
+      aria-valuemin={0}
+      aria-valuemax={STEPS.length}
+      aria-valuenow={current + 1}
+      aria-label="Tailoring progress"
+      className="h-1.5 rounded-full bg-surface-sunken"
+    >
+      <div
+        className="h-1.5 rounded-full bg-brand-500 transition-[width] duration-700"
+        style={{ width: `${((current + 1) / STEPS.length) * 100}%` }}
+      />
+    </div>
+  );
+
   return (
-    <Card className="mb-10">
-      <CardBody className="py-8">
-        <div className="mx-auto max-w-md">
-          <div className="flex items-center gap-3">
-            <Spinner className="h-5 w-5 text-brand-600" />
-            <h2 className="text-base font-semibold" aria-live="polite">
-              {status === "queued" ? "Queued, starting shortly…" : iterating ? "Regenerating selected changes…" : "Tailoring your resume…"}
-            </h2>
-          </div>
-          <p className="mt-1 pl-8 text-sm text-ink-muted">This usually takes under a minute. You can leave this page; we&apos;ll keep working.</p>
-          <ol className="mt-6 space-y-3 pl-8">
-            {STEPS.map((s, i) => (
-              <li key={s.key} className={cx("flex items-center gap-3 text-sm", i < current ? "text-ink-muted" : i === current ? "font-medium text-ink" : "text-ink-faint")}>
-                <span className={cx("grid h-5 w-5 place-items-center rounded-full", i < current ? "bg-brand-100 text-brand-700" : i === current ? "border-2 border-brand-500" : "border border-slate-300")}>
-                  {i < current && <Check className="h-3 w-3" aria-hidden />}
-                </span>
-                {s.label}
-              </li>
-            ))}
-          </ol>
+    <Card className="relative mb-8 overflow-hidden">
+      <DotBackground fade />
+      <div className={compact ? "relative px-5 py-5 sm:px-6" : "relative mx-auto max-w-md px-5 py-10 text-center"}>
+        <h2 className="text-lg font-semibold" aria-live="polite">
+          {status === "queued" ? "Queued, starting shortly…" : iterating ? "Rewriting the selected changes…" : "Tailoring your resume…"}
+        </h2>
+        <p className="mt-1 text-sm text-ink-muted">Usually under a minute. You can leave this page; we&apos;ll keep going.</p>
+        <div className="mt-5">{bar}</div>
+        {!compact && (
+          <Stepper
+            orientation="vertical"
+            aria-label="Tailoring steps"
+            className="mx-auto mt-6 w-fit max-w-full text-left"
+            steps={STEPS.map((s) => ({ id: s.key, label: s.label }))}
+            current={current}
+            activeLabel={<ShinyText text={STEPS[current]!.label} />}
+          />
+        )}
+        <div className={compact ? "mt-4 flex flex-wrap items-center gap-2" : "mt-6 flex flex-wrap items-center justify-center gap-2"}>
+          {onPause && (
+            <Button variant="ghost" size="sm" onClick={onPause}>
+              Pause
+            </Button>
+          )}
+          {onCancel && (
+            <Button variant="ghost" size="sm" onClick={onCancel}>
+              Cancel
+            </Button>
+          )}
+          <Link
+            href="/dashboard"
+            className="inline-flex h-9 items-center rounded-lg px-3 text-sm text-ink-muted hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2"
+          >
+            Back to tailored resumes
+          </Link>
         </div>
-      </CardBody>
+      </div>
     </Card>
   );
 }

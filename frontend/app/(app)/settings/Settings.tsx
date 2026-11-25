@@ -1,4 +1,6 @@
 "use client";
+import { Badge, ChoiceCards, Disclosure, SegmentedControl } from "@/components/ui";
+import { useConsentHint } from "./useConsentHint";
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -7,19 +9,8 @@ import { api, auth } from "@/lib/api";
 import { useResource } from "@/lib/hooks";
 import { formatDate } from "@/lib/format";
 import type { CheckoutMode, User, UserPatch } from "@/lib/types";
-import { Alert, Button, Card, CardBody, CardHeader, Dialog, Input, PageHeader, Select, SkeletonRows, useToast } from "@/components/ui";
+import { Alert, Button, Card, CardBody, CardHeader, Dialog, Input, PageHeader, SkeletonRows, useToast } from "@/components/ui";
 
-const TONES = ["professional", "confident", "concise", "warm"];
-const ATS = [
-  { v: "balanced", l: "Balanced (recommended)" },
-  { v: "ats_first", l: "Optimise for ATS parsing" },
-  { v: "human_first", l: "Optimise for human readers" },
-];
-const DEPTH = [
-  { v: "low", l: "Light: plain language" },
-  { v: "medium", l: "Moderate" },
-  { v: "high", l: "Deep: keep technical detail" },
-];
 const DELETE_PHRASE = "delete my account";
 
 export function Settings() {
@@ -102,7 +93,7 @@ function PreferencesCard({ user, onSaved }: { user: User; onSaved: (u: User) => 
       <CardHeader title="Tailoring preferences" description="Defaults for every new tailoring. You can still change length per job." />
       <CardBody>
         <form
-          className="space-y-4"
+          className="space-y-6"
           onSubmit={(e) => {
             e.preventDefault();
             const fd = new FormData(e.currentTarget);
@@ -116,37 +107,54 @@ function PreferencesCard({ user, onSaved }: { user: User; onSaved: (u: User) => 
             });
           }}
         >
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Select name="preferred_page_limit" label="Resume length" defaultValue={String(user.preferred_page_limit ?? 2)}>
-              <option value="1">1 page</option>
-              <option value="2">2 pages</option>
-              <option value="3">3+ pages</option>
-            </Select>
-            <Input name="industry_focus" label="Industry focus" placeholder="e.g. Fintech, Healthcare" defaultValue={user.industry_focus ?? ""} />
-            <Select name="resume_tone" label="Tone" defaultValue={user.resume_tone ?? "professional"}>
-              {TONES.map((t) => (
-                <option key={t} value={t} className="capitalize">
-                  {t[0]!.toUpperCase() + t.slice(1)}
-                </option>
-              ))}
-            </Select>
-            <Select name="ats_preference" label="ATS preference" defaultValue={user.ats_preference ?? "balanced"}>
-              {ATS.map((o) => (
-                <option key={o.v} value={o.v}>
-                  {o.l}
-                </option>
-              ))}
-            </Select>
-            <Select name="technical_depth" label="Technical depth" defaultValue={user.technical_depth ?? "medium"}>
-              {DEPTH.map((o) => (
-                <option key={o.v} value={o.v}>
-                  {o.l}
-                </option>
-              ))}
-            </Select>
-          </div>
-          <details>
-            <summary className="cursor-pointer text-sm text-ink-muted hover:text-ink">Template</summary>
+          <ChoiceCards
+            name="preferred_page_limit"
+            label="Resume length"
+            columns={3}
+            defaultValue={String(user.preferred_page_limit ?? 2)}
+            options={[
+              { value: "1", label: "1 page", description: "Early career or concise" },
+              { value: "2", label: "2 pages", description: "Right for most roles", badge: "Recommended" },
+              { value: "3", label: "3+ pages", description: "Senior, academic or federal" },
+            ]}
+          />
+          <ChoiceCards
+            name="resume_tone"
+            label="Tone"
+            columns={2}
+            defaultValue={user.resume_tone ?? "professional"}
+            options={[
+              { value: "professional", label: "Professional", description: "Polished and neutral" },
+              { value: "confident", label: "Confident", description: "Leads with impact" },
+              { value: "concise", label: "Concise", description: "Short and direct" },
+              { value: "warm", label: "Warm", description: "Personable and human" },
+            ]}
+          />
+          <ChoiceCards
+            name="ats_preference"
+            label="Who should it read best for?"
+            columns={3}
+            defaultValue={user.ats_preference ?? "balanced"}
+            options={[
+              { value: "balanced", label: "Balanced", description: "Good for both", badge: "Recommended" },
+              { value: "ats_first", label: "Screening software", description: "Simple structure, exact keywords" },
+              { value: "human_first", label: "Human readers", description: "Natural flow and voice" },
+            ]}
+          />
+          <SegmentedControl
+            name="technical_depth"
+            label="Technical detail"
+            fullWidth
+            defaultValue={user.technical_depth ?? "medium"}
+            options={[
+              { value: "low", label: "Light" },
+              { value: "medium", label: "Moderate" },
+              { value: "high", label: "Deep" },
+            ]}
+          />
+          <p className="-mt-3 text-sm text-ink-muted">Light uses plain language. Deep keeps technical specifics.</p>
+          <Input name="industry_focus" label="Industry focus" optional placeholder="e.g. Fintech, Healthcare" defaultValue={user.industry_focus ?? ""} />
+          <Disclosure summary="Advanced">
             <div className="mt-3 max-w-sm">
               <Input
                 name="preferred_template_id"
@@ -155,7 +163,7 @@ function PreferencesCard({ user, onSaved }: { user: User; onSaved: (u: User) => 
                 hint="Used when a PDF upload cannot keep its own layout (scanned files, or edits that do not fit). Leave blank for the default template. DOCX and most text PDFs keep their own formatting."
               />
             </div>
-          </details>
+          </Disclosure>
           <Button type="submit" loading={busy}>
             Save preferences
           </Button>
@@ -277,11 +285,15 @@ function DataCard() {
   const [confirm, setConfirm] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [consentBusy, setConsentBusy] = useState(false);
+  const [hint, setHint] = useConsentHint();
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
 
   async function setConsent(granted: boolean) {
     setConsentBusy(true);
     try {
       await api.grantConsent(granted);
+      setHint(granted ? "granted" : "declined");
+      setWithdrawOpen(false);
       toast.success(granted ? "AI processing consent granted." : "AI processing consent withdrawn. Tailoring is paused until you consent again.");
     } catch (e) {
       toast.error(e);
@@ -327,19 +339,25 @@ function DataCard() {
       <CardBody className="space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <p className="text-sm font-medium">AI processing consent</p>
+            <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
+              AI processing consent
+              {hint === "granted" && <Badge tone="green">Given on this device</Badge>}
+              {hint === "declined" && <Badge tone="amber">Not given on this device</Badge>}
+            </p>
             <p className="text-sm text-ink-muted">Required for tailoring. Withdrawing stops new AI processing of your resumes.</p>
           </div>
           <div className="flex gap-2">
-            <Button variant="secondary" onClick={() => setConsent(true)} loading={consentBusy}>
-              Grant
-            </Button>
-            <Button variant="ghost" onClick={() => setConsent(false)} disabled={consentBusy}>
-              Withdraw
+            {hint !== "granted" && (
+              <Button variant={hint === "declined" ? "primary" : "secondary"} onClick={() => setConsent(true)} loading={consentBusy}>
+                Give consent
+              </Button>
+            )}
+            <Button variant="secondary" onClick={() => setWithdrawOpen(true)} disabled={consentBusy}>
+              Withdraw consent
             </Button>
           </div>
         </div>
-        <div className="flex flex-wrap items-center justify-between gap-4 border-t border-slate-100 pt-6">
+        <div className="flex flex-wrap items-center justify-between gap-4 border-t border-line pt-6">
           <div>
             <p className="text-sm font-medium">Export your data</p>
             <p className="text-sm text-ink-muted">Download everything we hold about you as JSON.</p>
@@ -348,7 +366,7 @@ function DataCard() {
             <Download className="h-4 w-4" aria-hidden /> Export
           </Button>
         </div>
-        <div className="flex flex-wrap items-center justify-between gap-4 border-t border-slate-100 pt-6">
+        <div className="flex flex-wrap items-center justify-between gap-4 border-t border-line pt-6">
           <div>
             <p className="text-sm font-medium text-red-700">Delete account</p>
             <p className="text-sm text-ink-muted">Permanently delete your account, resumes and history.</p>
@@ -366,19 +384,37 @@ function DataCard() {
         }}
         title="Delete your account?"
         description="This permanently deletes your account, resumes, tailored versions and application history. This can't be undone."
-      >
-        <div className="space-y-4">
-          <Input label={`Type “${DELETE_PHRASE}” to confirm`} value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="off" />
-          <div className="flex justify-end gap-2">
+        size="sm"
+        footer={
+          <>
             <Button variant="secondary" onClick={() => setOpen(false)}>
               Cancel
             </Button>
             <Button variant="danger" disabled={confirm.trim().toLowerCase() !== DELETE_PHRASE} loading={deleting} onClick={deleteAccount}>
               Permanently delete
             </Button>
-          </div>
-        </div>
+          </>
+        }
+      >
+        <Input label={`Type “${DELETE_PHRASE}” to confirm`} value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="off" />
       </Dialog>
+      <Dialog
+        open={withdrawOpen}
+        onClose={() => setWithdrawOpen(false)}
+        size="sm"
+        title="Withdraw AI consent?"
+        description="You won't be able to tailor resumes until you give it again. Existing results stay available."
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setWithdrawOpen(false)}>
+              Keep consent
+            </Button>
+            <Button variant="danger" onClick={() => setConsent(false)} loading={consentBusy}>
+              Withdraw
+            </Button>
+          </>
+        }
+      />
     </Card>
   );
 }
