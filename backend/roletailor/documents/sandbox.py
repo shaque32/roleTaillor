@@ -82,8 +82,25 @@ def _parse(kind: str, data: bytes, max_pages: int, max_blocks: int,
     return doc
 
 
-def main(argv: list[str]) -> int:
+CPU_HARD_GRACE_SECONDS = 2
+
+
+def apply_limits(memory_mb: int, cpu_seconds: int) -> None:
+    """Cap this process's address space and CPU time; children (Tesseract) inherit both.
+
+    The CPU budget is the soft limit, which ends the process with SIGXCPU so the parent can
+    tell "ran out of CPU" from a crash. The hard limit sits just above it as the forced stop:
+    with both equal the kernel sends SIGKILL first and the reason is lost.
+    """
     import resource
+
+    limit = memory_mb * 1024 * 1024
+    resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
+    resource.setrlimit(resource.RLIMIT_CPU, (cpu_seconds, cpu_seconds + CPU_HARD_GRACE_SECONDS))
+    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+
+
+def main(argv: list[str]) -> int:
 
     from .pdf import OcrOptions
 
@@ -96,10 +113,7 @@ def main(argv: list[str]) -> int:
         ocr = OcrOptions(enabled=argv[5] == "1", max_pages=int(argv[6]), deadline=float(argv[7]))
     except ValueError:
         return EXIT_USAGE
-    limit = memory_mb * 1024 * 1024
-    resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
-    resource.setrlimit(resource.RLIMIT_CPU, (cpu_seconds, cpu_seconds))
-    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+    apply_limits(memory_mb, cpu_seconds)
     data = sys.stdin.buffer.read()
     try:
         doc = _parse(kind, data, max_pages, max_blocks, ocr)

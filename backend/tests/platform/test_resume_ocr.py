@@ -414,3 +414,34 @@ def test_scan_upload_is_read_end_to_end(make_user):
     assert version["blocks"][0]["text"] == "Priya Raman"
     assert "ocr_applied" in [f["code"] for f in version["findings"]]
     assert version["layout_metadata"]["ocr"] is True
+
+
+def test_an_old_attempt_that_errors_cannot_fail_a_newer_attempt(make_user, queued, monkeypatch):
+    """An old task that hits an unexpected error after the user retried must leave the new
+    attempt alone, whether the error is terminal or the last transient retry."""
+    for error in (RuntimeError("bug"), sandbox.ParserBusy("busy")):
+        user = make_user()
+        rid = _scan(user, queued)
+
+        def parse(data, error=error, user=user, rid=rid):
+            # The user's retry lands while the old attempt is still parsing.
+            _age(user, rid, 3600)
+            assert user.post(f"/v1/resumes/{rid}/processing/retry").status_code == 202
+            raise error
+
+        monkeypatch.setattr(resume_ocr, "_parse", parse)
+        assert resume_ocr.run(user.org_id, rid, final=True) == "skipped"
+        assert _row(user, rid)["processing_status"] == "processing"
+        assert user.get(f"/v1/resumes/{rid}").json()["processing"]["status"] == "processing"
+
+
+def test_an_error_before_the_claim_marks_nothing(make_user, queued, monkeypatch):
+    user = make_user()
+    rid = _scan(user, queued)
+
+    def boom(org_id, resume_id):
+        raise RuntimeError("bug")
+
+    monkeypatch.setattr(resume_ocr, "_claim", boom)
+    assert _run_task(user, rid) == "failed"
+    assert _row(user, rid)["processing_status"] == "processing"

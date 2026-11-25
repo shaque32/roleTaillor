@@ -110,12 +110,15 @@ function ScanFlow({
 export function ResumeUpload({
   onUploaded,
   onScanStarted,
+  onScanDiscarded,
   canLeave = true,
   submitLabel = "Upload resume",
 }: {
   onUploaded: (r: ResumeWithVersion) => void;
   /** Called when a scanned PDF was accepted and is being read in the background (the resume already exists). */
   onScanStarted?: (resume: ResumeListItem | ResumeDetail) => void;
+  /** Called once a scan that could not be read has been removed, so a list showing it can drop the row. */
+  onScanDiscarded?: (resumeId: string) => void;
   /** False when the caller cannot continue without the finished resume (changes the wording of the waiting state). */
   canLeave?: boolean;
   submitLabel?: string;
@@ -209,7 +212,13 @@ export function ResumeUpload({
 
   /** Leave the scan screen. The unreadable resume is removed so it doesn't linger; if that fails it is harmless. */
   function discardScan(next: "file" | "text") {
-    if (scan) void api.archiveResume(scan.resume.id).catch(() => undefined);
+    if (scan) {
+      const id = scan.resume.id;
+      void api.archiveResume(id).then(
+        () => onScanDiscarded?.(id),
+        () => undefined, // still listed, where it can be removed by hand
+      );
+    }
     setScan(null);
     setFile(null);
     setName("");

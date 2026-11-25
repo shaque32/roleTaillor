@@ -53,15 +53,16 @@ def ocr_resume(self, org_id: str, resume_id: str, correlation: str | None = None
     started = time.monotonic()
     try:
         try:
-            outcome = resume_ocr.run(org_id, resume_id)
+            outcome = resume_ocr.run(org_id, resume_id, final=self.request.retries >= MAX_RETRIES)
         except Exception as exc:
             if resume_ocr.is_transient(exc) and self.request.retries < MAX_RETRIES:
                 log.warning("transient ocr failure, retrying",
                             extra={"resume_id": resume_id, "error": repr(exc)})
                 OCR_JOBS.labels("retried").inc()
                 raise self.retry(exc=exc, countdown=_backoff_seconds(self.request.retries)) from exc
-            log.exception("ocr failed", extra={"resume_id": resume_id})
-            resume_ocr.mark_failed(org_id, resume_id, resume_ocr.FAILED)
+            # Raised before the attempt was claimed, so there is no attempt to mark failed
+            # (a newer one may own the row). The resume reads as timed out once stale.
+            log.exception("ocr failed before claiming the resume", extra={"resume_id": resume_id})
             outcome = resume_ocr.FAILED
         OCR_JOBS.labels(outcome).inc()
         OCR_JOB_SECONDS.observe(time.monotonic() - started)

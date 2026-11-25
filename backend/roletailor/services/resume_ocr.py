@@ -45,7 +45,7 @@ def is_transient(exc: BaseException) -> bool:
 @dataclass(frozen=True)
 class _Claim:
     data: bytes
-    started_at: datetime | None
+    started_at: datetime | None  # identifies the attempt; None only on rows written by hand
 
 
 def _claim(org_id: str, resume_id: str) -> _Claim | None:
@@ -109,16 +109,17 @@ def _complete(conn: Connection, org_id: str, resume_id: str, doc: ParsedDocument
     return True
 
 
-def mark_failed(org_id: str, resume_id: str, outcome: str, started_at: datetime | None = None) -> bool:
-    """Record a failed read. With `started_at`, only the attempt that claimed the row may fail it,
-    so a slow earlier attempt cannot fail a retry the user has started since."""
+def mark_failed(org_id: str, resume_id: str, outcome: str, started_at: datetime) -> bool:
+    """Record a failed read for the attempt that began at `started_at`. Only the attempt that
+    claimed the row may fail it, so a slow earlier attempt cannot fail a retry the user has
+    started since."""
     code = _CODES[outcome]
     with db.tenant_tx(org_id) as conn:
         row = fetch_one(
             conn,
             "UPDATE resumes SET processing_status = 'failed', processing_error = :code"
             " WHERE id = :id AND processing_status = 'processing'"
-            " AND (CAST(:started AS timestamptz) IS NULL OR processing_started_at = :started)"
+            " AND processing_started_at = :started"
             " RETURNING owner_user_id",
             {"id": resume_id, "code": code, "started": started_at},
         )
@@ -131,25 +132,34 @@ def mark_failed(org_id: str, resume_id: str, outcome: str, started_at: datetime 
     return True
 
 
-def run(org_id: str, resume_id: str) -> str:
-    """Read one resume. Returns ready, no_text, timeout, failed or skipped. Infrastructure
-    errors (storage, database, a busy parser) propagate for the task to retry."""
+def run(org_id: str, resume_id: str, *, final: bool = False) -> str:
+    """Read one resume. Returns ready, no_text, timeout, failed or skipped.
+
+    Transient infrastructure errors (storage, database, a busy parser) propagate for the
+    task to retry unless `final` says this is the last attempt. Every failure recorded here
+    is tied to the attempt this call claimed. An error before the claim records nothing: it
+    has no attempt to fail, and the resume reads as timed out once it goes stale."""
     UUID(resume_id)  # a malformed id is a caller bug, not a transient fault
     claim = _claim(org_id, resume_id)
     if claim is None:
         return SKIPPED
     try:
         doc = _parse(claim.data)
-    except sandbox.ParseTimeout:
-        outcome = TIMEOUT
-    except sandbox.InvalidDocument:  # DocumentRejected, ParseFailed or a bad PDF
-        outcome = FAILED
-    else:
         if doc.blocks:
             with db.tenant_tx(org_id) as conn:
                 if _complete(conn, org_id, resume_id, doc):
                     return READY
             return SKIPPED  # archived or finished while OCR ran
         outcome = _failure_outcome(doc)
-    mark_failed(org_id, resume_id, outcome, claim.started_at)
+    except sandbox.ParseTimeout:
+        outcome = TIMEOUT
+    except sandbox.InvalidDocument:  # DocumentRejected, ParseFailed or a bad PDF
+        outcome = FAILED
+    except Exception as exc:
+        if is_transient(exc) and not final:
+            raise
+        log.exception("ocr failed", extra={"resume_id": resume_id})
+        outcome = FAILED
+    if claim.started_at is None or not mark_failed(org_id, resume_id, outcome, claim.started_at):
+        return SKIPPED  # a newer attempt owns the row now
     return outcome

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Archive, FilePlus2, FileText, History, Pencil, Upload } from "lucide-react";
 import { api } from "@/lib/api";
 import { usePoll, useResource } from "@/lib/hooks";
@@ -28,9 +28,17 @@ export function Resumes() {
   // Rows being read from a scan flip to ready on their own. setData (not reload) so the list never flashes a skeleton.
   const reading = data?.filter(isReading) ?? [];
   const pollFrom = reading.reduce((t, r) => Math.min(t, startedAtMs(r.processing)), Date.now());
+  // Bumped by every local change to the list. A poll that started before the change carries
+  // older state, so its response is dropped instead of overwriting the newer rows.
+  const listEpoch = useRef(0);
+  const touchList = () => {
+    listEpoch.current += 1;
+  };
   usePoll(
-    async () => {
-      setData(await api.resumes());
+    async (signal) => {
+      const epoch = listEpoch.current;
+      const rows = await api.resumes();
+      if (!signal.aborted && epoch === listEpoch.current) setData(rows);
       return true;
     },
     reading.length > 0,
@@ -41,6 +49,7 @@ export function Resumes() {
     setRetrying(r.id);
     try {
       const d = await api.retryResumeProcessing(r.id);
+      touchList();
       setData((xs) => xs?.map((x) => (x.id === r.id ? { ...x, processing: d.processing } : x)));
     } catch (err) {
       toast.error(err);
@@ -58,6 +67,7 @@ export function Resumes() {
     setBusy(true);
     try {
       await api.renameResume(renaming.id, name);
+      touchList();
       setData((xs) => xs?.map((r) => (r.id === renaming.id ? { ...r, name } : r)));
       setRenaming(null);
       toast.success("Resume renamed.");
@@ -73,6 +83,7 @@ export function Resumes() {
     setBusy(true);
     try {
       await api.archiveResume(archiving.id);
+      touchList();
       setData((xs) => xs?.filter((r) => r.id !== archiving.id));
       setArchiving(null);
       toast.success("Resume archived.");
@@ -176,7 +187,14 @@ export function Resumes() {
 
       <Dialog open={uploadOpen} onClose={() => setUploadOpen(false)} title="Upload a resume" size="lg">
         <ResumeUpload
-          onScanStarted={() => void reload()}
+          onScanStarted={() => {
+            touchList();
+            void reload();
+          }}
+          onScanDiscarded={(id) => {
+            touchList();
+            setData((xs) => xs?.filter((x) => x.id !== id));
+          }}
           onUploaded={({ resume }) => {
             setUploadOpen(false);
             toast.success("Resume uploaded. Check what we extracted.");

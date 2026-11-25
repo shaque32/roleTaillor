@@ -147,3 +147,16 @@ def test_child_argv_is_strict():
     assert sandbox.main(["xlsx", "768", "60", "20", "3000", "0", "6", "45"]) == sandbox.EXIT_USAGE
     assert sandbox.main(["pdf", "768", "60", "20", "3000", "2", "6", "45"]) == sandbox.EXIT_USAGE
     assert sandbox.main(["pdf", "x", "60", "20", "3000", "0", "6", "45"]) == sandbox.EXIT_USAGE
+
+
+def test_cpu_budget_ends_the_child_with_sigxcpu_not_sigkill():
+    """The soft CPU limit must fire first so the parent can classify the exit as a timeout."""
+    import signal
+    import subprocess
+    import sys
+
+    code = ("from roletailor.documents.sandbox import apply_limits\n"
+            "apply_limits(512, 1)\n"
+            "while True: pass\n")
+    proc = subprocess.run([sys.executable, "-c", code], timeout=30, check=False)
+    assert proc.returncode == -signal.SIGXCPU
