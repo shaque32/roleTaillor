@@ -71,6 +71,9 @@ def _checkout_completed(conn: Connection, org_id: UUID, obj: Obj) -> None:
                 "INSERT INTO payments (organization_id, stripe_payment_intent_id, status, currency, amount_minor)"
                 " VALUES (:org, :pi, :status, :cur, :amount)"
                 " ON CONFLICT (stripe_payment_intent_id) DO UPDATE SET status = EXCLUDED.status"
+                # Events can arrive out of order: a late "completed" must not move a
+                # settled, failed or refunded payment back.
+                " WHERE payments.status = 'pending'"
             ),
             {
                 "org": org_id, "pi": obj["payment_intent"],
@@ -80,6 +83,29 @@ def _checkout_completed(conn: Connection, org_id: UUID, obj: Obj) -> None:
         )
     audit.record(conn, org_id=org_id, action="billing.checkout_completed", resource_type="organization",
                  resource_id=org_id, metadata={"session_id": obj.get("id"), "mode": obj.get("mode")})
+
+
+def _payment_async_result(conn: Connection, org_id: UUID, obj: Obj) -> None:
+    """Delayed payment methods (bank debits): the session completes unpaid, then settles."""
+    if obj.get("mode") != "payment" or not obj.get("payment_intent"):
+        return
+    paid = obj.get("payment_status") == "paid"
+    conn.execute(
+        text(
+            "INSERT INTO payments (organization_id, stripe_payment_intent_id, status, currency, amount_minor)"
+            " VALUES (:org, :pi, :status, :cur, :amount)"
+            " ON CONFLICT (stripe_payment_intent_id) DO UPDATE SET status = EXCLUDED.status"
+            # A failure never downgrades money already received (or refunded).
+            " WHERE payments.status = 'pending'"
+            " OR (EXCLUDED.status = 'succeeded' AND payments.status <> 'refunded')"
+        ),
+        {
+            "org": org_id, "pi": obj["payment_intent"], "status": "succeeded" if paid else "failed",
+            "cur": (obj.get("currency") or "usd").upper(), "amount": obj.get("amount_total") or 0,
+        },
+    )
+    audit.record(conn, org_id=org_id, action="billing.payment_succeeded" if paid else "billing.payment_failed",
+                 resource_type="organization", resource_id=org_id, metadata={"session_id": obj.get("id")})
 
 
 def _subscription_changed(conn: Connection, org_id: UUID, obj: Obj) -> None:
@@ -94,6 +120,11 @@ def _subscription_changed(conn: Connection, org_id: UUID, obj: Obj) -> None:
             " ON CONFLICT (stripe_subscription_id) DO UPDATE SET stripe_price_id = EXCLUDED.stripe_price_id,"
             " status = EXCLUDED.status, current_period_end = EXCLUDED.current_period_end,"
             " cancel_at_period_end = EXCLUDED.cancel_at_period_end"
+            # Ordering rule (Stripe does not guarantee delivery order, and there is no
+            # per-row event timestamp column): 'canceled' is terminal in Stripe, a
+            # subscription is never reactivated, so a late created/updated event must not
+            # revert it. Only the deleted event itself may write over it (idempotent).
+            " WHERE subscriptions.status <> 'canceled' OR EXCLUDED.status = 'canceled'"
         ),
         {
             "org": org_id, "sid": obj["id"], "price": (first.get("price") or {}).get("id") or "unknown",
@@ -116,7 +147,8 @@ def _invoice_subscription_id(obj: Obj) -> str | None:
 def _invoice_payment_failed(conn: Connection, org_id: UUID, obj: Obj) -> None:
     if subscription_id := _invoice_subscription_id(obj):
         conn.execute(
-            text("UPDATE subscriptions SET status = 'past_due' WHERE stripe_subscription_id = :sid"),
+            text("UPDATE subscriptions SET status = 'past_due'"
+                 " WHERE stripe_subscription_id = :sid AND status <> 'canceled'"),
             {"sid": subscription_id},
         )
     notifications.notify_admins(conn, "billing.payment_failed", {
@@ -127,16 +159,53 @@ def _invoice_payment_failed(conn: Connection, org_id: UUID, obj: Obj) -> None:
                  metadata={"invoice_id": obj.get("id"), "stripe_subscription_id": subscription_id})
 
 
+def _invoice_paid(conn: Connection, org_id: UUID, obj: Obj) -> None:
+    """A paid invoice does not prove the subscription is current (a newer invoice may
+    still be unpaid), so a past_due row is refreshed from Stripe rather than assumed
+    active. subscription.updated normally does this already; this covers lost or late
+    deliveries. A Stripe error propagates, so the event is retried."""
+    subscription_id = _invoice_subscription_id(obj)
+    if not subscription_id:
+        return
+    row = fetch_one(
+        conn, "SELECT status FROM subscriptions WHERE stripe_subscription_id = :sid FOR UPDATE",
+        {"sid": subscription_id},
+    )
+    if row is None or row["status"] != "past_due":
+        return
+    current = billing.stripe_client().v1.subscriptions.retrieve(subscription_id)
+    _subscription_changed(conn, org_id, dict(current.to_dict()))
+
+
 def _charge_refunded(conn: Connection, org_id: UUID, obj: Obj) -> None:
+    intent = obj.get("payment_intent")
+    if not intent:
+        log.warning("refund without a payment intent", extra={"charge": obj.get("id")})
+        return
+    refunded = obj.get("amount_refunded") or 0
+    amount = max(obj.get("amount") or 0, refunded)
+    # One upsert, so the refund is applied whichever event wins a concurrent delivery.
+    # The refund can arrive before the event that creates the payment row: it is then
+    # recorded here, and a later settlement cannot grant a credit for refunded money
+    # (credits require refunded_minor = 0, and settlement only updates status). If a
+    # settlement inserts the row at the same moment, this statement waits for it and
+    # takes the update branch instead of being dropped.
     payment = fetch_one(
         conn,
-        "UPDATE payments SET refunded_minor = least(:refunded, amount_minor),"
-        " status = CASE WHEN :refunded >= amount_minor THEN 'refunded' ELSE status END"
-        " WHERE stripe_payment_intent_id = :pi RETURNING id",
-        {"refunded": obj.get("amount_refunded") or 0, "pi": obj.get("payment_intent")},
+        "INSERT INTO payments (organization_id, stripe_payment_intent_id, status, currency,"
+        " amount_minor, refunded_minor) VALUES (:org, :pi, :status, :cur, :amount, :refunded)"
+        " ON CONFLICT (stripe_payment_intent_id) DO UPDATE SET"
+        " refunded_minor = least(EXCLUDED.refunded_minor, payments.amount_minor),"
+        " status = CASE WHEN EXCLUDED.refunded_minor >= payments.amount_minor"
+        " THEN 'refunded' ELSE payments.status END"
+        " RETURNING id, (xmax = 0) AS inserted",
+        {"org": org_id, "pi": intent, "status": "refunded" if refunded >= amount else "pending",
+         "cur": (obj.get("currency") or "usd").upper(), "amount": amount, "refunded": refunded},
     )
-    if payment is None:
-        log.warning("refund for unknown payment", extra={"payment_intent": obj.get("payment_intent")})
+    assert payment is not None
+    if payment["inserted"]:
+        audit.record(conn, org_id=org_id, action="billing.refunded", resource_type="organization",
+                     resource_id=org_id, metadata={"before_payment_recorded": True})
         return
     reversed_rows = billing.reverse_usage(conn, payment_id=payment["id"])
     audit.record(conn, org_id=org_id, action="billing.refunded", resource_type="payment",
@@ -148,7 +217,11 @@ HANDLERS: dict[str, Callable[[Connection, UUID, Obj], None]] = {
     "customer.subscription.created": _subscription_changed,
     "customer.subscription.updated": _subscription_changed,
     "customer.subscription.deleted": _subscription_changed,
+    "checkout.session.async_payment_succeeded": _payment_async_result,
+    "checkout.session.async_payment_failed": _payment_async_result,
     "invoice.payment_failed": _invoice_payment_failed,
+    "invoice.paid": _invoice_paid,
+    "invoice.payment_succeeded": _invoice_paid,
     "charge.refunded": _charge_refunded,
 }
 
