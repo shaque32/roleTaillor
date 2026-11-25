@@ -32,7 +32,7 @@ from roletailor.pipeline.validation.rules import (
     check_block,
     check_document,
     has_gain,
-    length_bounds,
+    scope_length_bounds,
 )
 
 log = logging.getLogger(__name__)
@@ -142,7 +142,13 @@ def _rewrite_and_validate(gateway: Gateway, *, document: ParsedDocument, plan, s
     verifier_down = False
     no_gain: dict[str, str] = {}
     context = {"job_title": job.title, "positioning": plan.positioning,
-               "tone": prefs.get("tone"), "technical_depth": prefs.get("technical_depth")}
+               "tone": prefs.get("tone"), "technical_depth": prefs.get("technical_depth"),
+               # The job's own wording, so the writer can use it where a line already
+               # describes that work. The fact gates still decide what may appear.
+               "job_requirements": {
+                   "responsibilities": job.responsibilities[:8],
+                   "must_have": [k.term for k in job.keywords if k.importance == "must"][:15],
+                   "preferred": [k.term for k in job.keywords if k.importance != "must"][:15]}}
     router = gateway.router
 
     for rnd in range(MAX_ROUNDS):
@@ -151,7 +157,7 @@ def _rewrite_and_validate(gateway: Gateway, *, document: ParsedDocument, plan, s
         items = []
         for bid in sorted(pending, key=lambda x: list(plans).index(x)):
             bp, orig = plans[bid], by_id[bid].text
-            lo, hi = length_bounds(len(clean(orig)), doc_ctx.length_tolerance)
+            lo, hi = scope_length_bounds(len(clean(orig)), scopes[bid], doc_ctx.length_tolerance)
             items.append({"block_id": bid, "text": orig, "target_keywords": bp.target_keywords,
                           "evidence": bp.evidence, "instruction": bp.instruction,
                           "min_chars": max(lo, 1), "max_chars": hi})

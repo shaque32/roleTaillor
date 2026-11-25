@@ -79,7 +79,7 @@ def check_block(ctx: BlockContext, new_text: str, doc: DocContext) -> list[Viola
                                  detail=f"adds job keyword '{k.term}' that the original does not show"))
 
     # layout.length: stay inside the length budget so lines and pages do not shift.
-    lo, hi = length_bounds(len(orig), doc.length_tolerance)
+    lo, hi = scope_length_bounds(len(orig), ctx.scope, doc.length_tolerance)
     if not lo <= len(new) <= hi:
         out.append(Violation(rule_key="layout.length", block_id=bid,
                              detail=f"length {len(new)} outside {lo}-{hi} characters"))
@@ -116,6 +116,17 @@ def _is_jd_synonym_of_orig(term: str, orig: str, doc: DocContext) -> bool:
 
 def length_bounds(n: int, tol: float) -> tuple[int, int]:
     return int(n * (1 - tol)) - 8, int(n * (1 + tol)) + 8
+
+
+SUMMARY_GROWTH = 0.35
+
+
+def scope_length_bounds(n: int, scope: str, tol: float) -> tuple[int, int]:
+    """Bullets and skills lines stay within the tolerance so lines do not reflow. The
+    summary may grow further: it is where the job's must-haves get named, and the page
+    check reverts growth that pushes the document over its limit."""
+    lo, hi = length_bounds(n, tol)
+    return (lo, max(hi, int(n * (1 + SUMMARY_GROWTH)) + 8)) if scope == "summary" else (lo, hi)
 
 
 def check_document(texts: dict[str, str], bullets_by_entry: list[list[str]],

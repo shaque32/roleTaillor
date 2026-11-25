@@ -251,6 +251,7 @@ def aggregate(rows: list[dict]) -> dict:
         "mean_cost_usd": round(statistics.mean(costs), 6) if costs else 0.0,
         "p50_cost_usd": _pct(costs, 0.5), "p95_cost_usd": _pct(costs, 0.95),
         "max_cost_usd": round(max(costs), 6) if costs else 0.0,
+        "gate_hits_per_run": _gate_hits(ok),
         "mean_cost_by_stage": {s: round(sum(v) / len(ok), 6) for s, v in sorted(stages.items())},
         "mean_latency_by_stage_s": _mean_latency(ok),
         "p50_latency_s": _pct(lat, 0.5), "p95_latency_s": _pct(lat, 0.95),
@@ -264,6 +265,14 @@ def aggregate(rows: list[dict]) -> dict:
         out["judge"]["n"] = len(judged)
         out["judge"]["truthfulness_below_4"] = sum(j["truthfulness"] < 4 for j in judged)
     return out
+
+
+def _gate_hits(rows: list[dict]) -> dict[str, float]:
+    tot: dict[str, int] = {}
+    for r in rows:
+        for k, v in r.get("gate_hits", {}).items():
+            tot[k] = tot.get(k, 0) + v
+    return {k: round(v / len(rows), 2) for k, v in sorted(tot.items(), key=lambda kv: -kv[1])} if rows else {}
 
 
 def _mean_latency(rows: list[dict]) -> dict[str, float]:
@@ -310,6 +319,8 @@ def markdown(report: dict) -> str:
         target = ("not measured (no scored runs)" if not s["scored"]
                   else "met" if s["mean_cost_usd"] <= TARGET_COST_PER_RUN else "NOT met")
         lines.append(f"Mean model time by stage (s): {s['mean_latency_by_stage_s']}.")
+        lines.append(f"Blocks rejected by each gate, per run (these trigger rewrite retries): "
+                     f"{s['gate_hits_per_run']}.")
         lines.append(f"Mean cost by stage: {s['mean_cost_by_stage']}. "
                      f"Target ${TARGET_COST_PER_RUN:.2f}/run: {target}.")
         bad = [r for r in report["configs"][n]["results"] if r["status"] != "ok" or not r["passed"]]
@@ -324,6 +335,11 @@ def markdown(report: dict) -> str:
         if skipped:
             lines += ["", "Edits dropped as cosmetic (first 8):"]
             lines += [f"- {c}: `{e['before'][:110]}` -> `{e['proposed'][:110]}`" for c, e in skipped]
+        missed = [(r["case"], m) for r in report["configs"][n]["results"]
+                  for m in r.get("judge", {}).get("missed_opportunities", [])][:10]
+        if missed:
+            lines += ["", "Judge: honest matches the edits did not surface (first 10):"]
+            lines += [f"- {c}: {m[:220]}" for c, m in missed]
         flagged = [r for r in report["configs"][n]["results"]
                    if r.get("judge", {}).get("truthfulness", 5) < 4]
         if flagged:
