@@ -6,8 +6,9 @@ import logging
 import time
 from uuid import uuid4
 
+from roletailor.config import get_settings
 from roletailor.logging_setup import correlation_id
-from roletailor.services import tailoring_runner
+from roletailor.services import retention, tailoring_runner
 from roletailor.worker.celery_app import celery_app
 from roletailor.worker.metrics import WORKFLOW_RUN_SECONDS, WORKFLOW_RUNS
 
@@ -43,4 +44,31 @@ def run_tailoring(self, org_id: str, workflow_id: str, iteration: int,
         log.info("tailoring run finished", extra={"workflow_id": workflow_id, "outcome": outcome})
         return outcome
     finally:
+        correlation_id.reset(token)
+
+
+PURGE_LOCK_KEY = "rt:lock:purge-deleted-resumes"
+PURGE_LOCK_SECONDS = 30 * 60
+
+
+@celery_app.task(name="roletailor.worker.tasks.purge_deleted_resumes")
+def purge_deleted_resumes() -> dict[str, int]:
+    """Nightly: erase resumes deleted more than `resume_retention_days` ago. Safe to run
+    at any time and to repeat; a run that fails part-way is finished by the next one."""
+    import redis
+
+    token = correlation_id.set(f"purge-{uuid4().hex[:12]}")
+    client = redis.Redis.from_url(get_settings().redis_url)
+    try:
+        if not client.set(PURGE_LOCK_KEY, "1", nx=True, ex=PURGE_LOCK_SECONDS):
+            log.info("retention purge already running, skipping")
+            return {"purged": 0, "skipped": 0, "failed": 0, "objects_deleted": 0}
+        try:
+            summary = retention.purge_due()
+        finally:
+            client.delete(PURGE_LOCK_KEY)
+        return {"purged": summary.purged, "skipped": summary.skipped, "failed": summary.failed,
+                "objects_deleted": summary.objects_deleted}
+    finally:
+        client.close()
         correlation_id.reset(token)

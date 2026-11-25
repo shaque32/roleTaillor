@@ -33,6 +33,16 @@ def _get_owned(conn: Connection, principal: Principal, workflow_id: UUID, *, loc
     )
     if row is None:
         raise not_found("Workflow")
+    # A workflow whose resume was erased by the retention purge is gone for its owner.
+    # Separate statement, after the workflow lock: same lock order as retention.
+    live = fetch_one(
+        conn,
+        "SELECT 1 FROM resumes r JOIN resume_versions v ON v.resume_id = r.id"
+        " WHERE v.id = :version AND r.purged_at IS NULL" + (" FOR SHARE OF r" if lock else ""),
+        {"version": row["resume_version_id"]},
+    )
+    if live is None:
+        raise not_found("Workflow")
     return row
 
 
@@ -100,7 +110,7 @@ def create(
                 workflow = _set_status(conn, existing["id"], "queued")
                 pending_run = workflow["draft_state"].get("run") or _run_state(1, None)["run"]
         else:
-            resumes.get_owned_version(conn, principal, resume_version_id)
+            resumes.get_owned_version(conn, principal, resume_version_id, hold=True)
             if fetch_one(conn, "SELECT 1 FROM job_postings WHERE id = :id", {"id": job_posting_id}) is None:
                 raise not_found("Job posting")
             billing.ensure_can_start(conn, paid_usage_accepted=accept_paid_usage)
@@ -151,7 +161,7 @@ def dashboard(principal: Principal) -> list[dict]:
             " JOIN job_postings j ON j.id = w.job_posting_id"
             " LEFT JOIN LATERAL (SELECT ats_score, simulation_score FROM generated_resumes"
             "   WHERE workflow_id = w.id ORDER BY iteration DESC LIMIT 1) g ON true"
-            " WHERE w.requested_by = :uid"
+            " WHERE w.requested_by = :uid AND r.purged_at IS NULL"
             " ORDER BY w.created_at DESC LIMIT 200",
             {"uid": principal.user_id},
         )
@@ -217,7 +227,7 @@ def request_iteration(principal: Principal, workflow_id: UUID, focus_block_ids: 
         ).scalar_one()
         if last is None or workflow["status"] not in ("completed", "failed"):
             raise invalid_state("Iterations need a finished generation.", status=workflow["status"])
-        if last >= get_settings().max_iterations_per_workflow:
+        if last >= billing.plan_limits(conn).iterations:
             raise AppError(409, "iteration_limit", "This tailoring has reached its revision limit. "
                            "Start a new tailoring to keep refining.")
         state = _run_state(last + 1, focus_block_ids or None, instructions)

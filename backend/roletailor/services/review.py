@@ -26,7 +26,9 @@ def _get_generated(conn: Connection, principal: Principal, generated_id: UUID) -
         conn,
         f"SELECT {', '.join('g.' + c.strip() for c in GENERATED_COLUMNS.split(','))}"
         " FROM generated_resumes g JOIN tailoring_workflows w ON w.id = g.workflow_id"
-        " WHERE g.id = :id AND w.requested_by = :uid",
+        " JOIN resume_versions v ON v.id = g.resume_version_id"
+        " JOIN resumes r ON r.id = v.resume_id"
+        " WHERE g.id = :id AND w.requested_by = :uid AND r.purged_at IS NULL",
         {"id": generated_id, "uid": principal.user_id},
     )
     if row is None:

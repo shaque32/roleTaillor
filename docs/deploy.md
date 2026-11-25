@@ -107,6 +107,22 @@ Repeat for `prod` with the Basic Postgres plan and live Stripe keys.
 - Old and new code run side by side during a rolling deploy, so keep migrations backwards compatible: add columns before the code that uses them ships, and drop them in a later release.
 - If a migration fails, the release stops before any machine is replaced. Fix the migration in a new commit and deploy again.
 
+## Data retention and spend limits
+
+**Deleted resumes.** Deleting a resume hides it at once. The worker's nightly job (`purge_deleted_resumes`, 08:17 UTC, `RT_RETENTION_PURGE_HOUR_UTC`) erases it for good `RT_RESUME_RETENTION_DAYS` days later (default 30): uploaded and generated files, every version's text, proposed rewrites, feedback, embeddings, exports and share links. A skeleton without resume content stays (ids, timestamps, scores, usage, cost and audit records), because free-quota and payment accounting are counted from those rows. Deleting the whole account still removes everything at once.
+
+- The schedule runs inside the worker process (`celery worker -B`). If you scale the worker to several machines each one fires the schedule, and a Redis lock lets only one run the purge.
+- Run it by hand with `celery -A roletailor.worker.celery_app call roletailor.worker.tasks.purge_deleted_resumes` from a worker machine.
+- Database backups are outside the job's reach. An erased resume leaves them only when the backup itself expires, so keep the provider's backup retention short enough for your privacy notice. The same goes for object-storage versioning, if you turn it on.
+
+**Run and iteration caps.** `RT_GENERATION_RUNS_PER_ORG_PER_DAY` (default 60) and `RT_MAX_ITERATIONS_PER_WORKFLOW` (default 15) apply to everyone. `RT_PLAN_LIMITS` overrides them per plan as JSON, for the plans `free` and `subscription` and the keys `runs_per_day` and `iterations`:
+
+```
+RT_PLAN_LIMITS={"subscription": {"runs_per_day": 200, "iterations": 30}}
+```
+
+An organization is on `subscription` while it has an active subscription and on `free` otherwise, pay-per-use buyers included. Anything left out falls back to the two defaults. The API refuses to start on an unknown plan or key.
+
 ## Rollback
 
 - **Code:** run `fly releases -a roletailor-api` to find the previous image, then `fly deploy -a roletailor-api -c deploy/fly/api.toml --image <previous-image>` (and the same for the web app). This does not reverse migrations, which is why they must stay backwards compatible.

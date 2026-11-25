@@ -65,7 +65,7 @@ services:
 
   worker:
     <<: *backend
-    command: ["sh", "-c", "mkdir -p $$PROMETHEUS_MULTIPROC_DIR && exec celery -A roletailor.worker.celery_app worker --loglevel=INFO --concurrency=4"]
+    command: ["sh", "-c", "mkdir -p $$PROMETHEUS_MULTIPROC_DIR && exec celery -A roletailor.worker.celery_app worker -B --schedule /tmp/celerybeat-schedule --loglevel=INFO --concurrency=4"]
     environment:
       RT_DATABASE_URL: postgresql+psycopg://rt_app:rt_app@postgres:5432/roletailor
       RT_REDIS_URL: redis://redis:6379/0
