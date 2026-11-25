@@ -641,8 +641,10 @@
             "lineWidth": 1,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": false
-          }
+            "spanNulls": false,
+            "axisSoftMax": 0.05
+          },
+          "min": 0
         },
         "overrides": []
       },
@@ -750,8 +752,10 @@
             "lineWidth": 1,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": false
-          }
+            "spanNulls": false,
+            "axisSoftMax": 5
+          },
+          "min": 0
         },
         "overrides": []
       },
@@ -800,8 +804,10 @@
             "lineWidth": 1,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": false
-          }
+            "spanNulls": false,
+            "axisSoftMax": 5
+          },
+          "min": 0
         },
         "overrides": []
       },

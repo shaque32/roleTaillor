@@ -55,9 +55,14 @@ groups:
           sum by (provider) (rate(roletailor_ai_calls_total{status!="cached"}[10m]))
       - record: roletailor:ai_calls:count_10m
         expr: sum by (provider) (increase(roletailor_ai_calls_total{status!="cached"}[10m]))
+      # "or vector(0)": no fallback series exists until the first fallback, and the
+      # ratio should read 0 rather than "no data" while calls are flowing.
       - record: roletailor:ai_fallback_ratio:15m
         expr: |
-          sum(rate(roletailor_ai_calls_total{route=~"failover|escalated", status!="cached"}[15m]))
+          (
+            sum(rate(roletailor_ai_calls_total{route=~"failover|escalated", status!="cached"}[15m]))
+            or vector(0)
+          )
           /
           sum(rate(roletailor_ai_calls_total{status!="cached"}[15m]))
       - record: roletailor:ai_calls:count_15m
