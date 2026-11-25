@@ -1,7 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import { Download, ExternalLink } from "lucide-react";
 import { api, auth } from "@/lib/api";
 import { useResource } from "@/lib/hooks";
@@ -169,6 +169,27 @@ function BillingCard() {
   const toast = useToast();
   const billing = useResource(() => api.billing());
   const [busy, setBusy] = useState<CheckoutMode | null>(null);
+  const [portalBusy, setPortalBusy] = useState(false);
+  const checkoutResult = useSearchParams().get("checkout");
+  const { reload } = billing;
+
+  useEffect(() => {
+    if (checkoutResult !== "success") return;
+    // The webhook may land a moment after the redirect; refetch a couple of times.
+    const timers = [2000, 5000].map((ms) => setTimeout(() => void reload(), ms));
+    return () => timers.forEach(clearTimeout);
+  }, [checkoutResult, reload]);
+
+  async function openPortal() {
+    setPortalBusy(true);
+    try {
+      const { portal_url } = await api.portal();
+      window.location.assign(portal_url);
+    } catch (e) {
+      toast.error(e);
+      setPortalBusy(false);
+    }
+  }
 
   async function checkout(mode: CheckoutMode) {
     setBusy(mode);
@@ -183,11 +204,15 @@ function BillingCard() {
 
   const b = billing.data;
   const active = b?.subscription?.status === "active";
+  const hasSubscription = !!b?.subscription;
+  const pastDue = b?.subscription?.status === "past_due";
   return (
     <Card as="section">
       <div id="billing" className="scroll-mt-20" />
       <CardHeader title="Billing" description="Iterations on the same job are free. Failed generations never count." />
       <CardBody className="space-y-4">
+        {checkoutResult === "success" && <Alert tone="info">Payment received. It can take a few seconds to show up.</Alert>}
+        {checkoutResult === "cancelled" && <Alert tone="info">Checkout cancelled. You haven&apos;t been charged.</Alert>}
         {billing.loading && <SkeletonRows rows={1} />}
         {billing.error && <Alert tone="error">{billing.error.message}</Alert>}
         {b && (
@@ -213,8 +238,16 @@ function BillingCard() {
                 )}
               </div>
             </dl>
+            {pastDue && (
+              <Alert tone="warning">
+                Your last subscription payment failed. Update your payment method to keep generating.
+                <Button className="ml-3" variant="secondary" onClick={openPortal} loading={portalBusy}>
+                  Manage billing
+                </Button>
+              </Alert>
+            )}
             <div className="flex flex-wrap gap-2">
-              {!active && (
+              {!active && !pastDue && (
                 <Button onClick={() => checkout("subscription")} loading={busy === "subscription"}>
                   Subscribe · $9.99/month <ExternalLink className="h-3.5 w-3.5" aria-hidden />
                 </Button>
@@ -222,6 +255,11 @@ function BillingCard() {
               <Button variant="secondary" onClick={() => checkout("pay_per_use")} loading={busy === "pay_per_use"}>
                 Buy one resume · $0.50
               </Button>
+              {hasSubscription && !pastDue && (
+                <Button variant="ghost" onClick={openPortal} loading={portalBusy}>
+                  Manage billing <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+                </Button>
+              )}
             </div>
           </>
         )}

@@ -111,7 +111,7 @@ def test_checkout_session(make_user, monkeypatch):
     class FakeClient:
         def __init__(self, key):
             self.v1 = SimpleNamespace(
-                customers=SimpleNamespace(create=lambda params: SimpleNamespace(id="cus_new")),
+                customers=SimpleNamespace(create=lambda params, options=None: SimpleNamespace(id="cus_new")),
                 checkout=SimpleNamespace(sessions=SimpleNamespace(create=self._session)),
             )
 
@@ -127,3 +127,177 @@ def test_checkout_session(make_user, monkeypatch):
     assert created["customer"] == "cus_new" and created["line_items"][0]["price"] == "price_sub_test"
     r = user.post("/v1/billing/checkout", json={"mode": "pay_per_use"})
     assert created["mode"] == "payment" and created["line_items"][0]["price_data"]["unit_amount"] == 50
+
+
+# --------------------------------------------------------------------------
+# Checkout hardening, portal, async payments and webhook robustness
+# --------------------------------------------------------------------------
+
+
+class RecordingStripe:
+    """Installable fake for stripe.StripeClient recording what the service sends."""
+
+    def __init__(self, monkeypatch):
+        self.sessions, self.portals, self.customers = [], [], []
+        outer = self
+
+        class FakeClient:
+            def __init__(self, key):
+                def customer(params, options=None):
+                    outer.customers.append((params, options))
+                    return SimpleNamespace(id=f"cus_{uuid.uuid4().hex[:12]}")
+
+                def session(params):
+                    outer.sessions.append(params)
+                    return SimpleNamespace(id="cs_1", url="https://checkout.stripe.test/cs_1")
+
+                def portal(params):
+                    outer.portals.append(params)
+                    return SimpleNamespace(url="https://portal.stripe.test/p_1")
+
+                self.v1 = SimpleNamespace(
+                    customers=SimpleNamespace(create=customer),
+                    checkout=SimpleNamespace(sessions=SimpleNamespace(create=session)),
+                    billing_portal=SimpleNamespace(sessions=SimpleNamespace(create=portal)),
+                )
+
+        monkeypatch.setattr("roletailor.services.billing.stripe.StripeClient", FakeClient)
+
+
+def sub_payload(user, status="active", sid=None):
+    return {"id": sid or f"sub_{uuid.uuid4().hex[:10]}", "customer": user.customer, "status": status,
+            "cancel_at_period_end": False,
+            "items": {"data": [{"price": {"id": "price_sub_test"}, "current_period_end": int(time.time()) + 86400}]}}
+
+
+def test_checkout_urls_and_customer_idempotency_key(make_user, monkeypatch):
+    fake = RecordingStripe(monkeypatch)
+    user = make_user()
+    r = user.post("/v1/billing/checkout", json={"mode": "subscription"})
+    assert r.status_code == 200, r.text
+    params, options = fake.customers[0]
+    assert options == {"idempotency_key": f"customer-{user.org_id}"}
+    session = fake.sessions[0]
+    assert session["success_url"].endswith("/settings?checkout=success&session_id={CHECKOUT_SESSION_ID}#billing")
+    assert session["cancel_url"].endswith("/settings?checkout=cancelled#billing")
+
+
+def test_subscription_checkout_refused_when_already_subscribed(client, exhausted_user, monkeypatch):
+    fake = RecordingStripe(monkeypatch)
+    user = exhausted_user
+    send(client, stripe_event("customer.subscription.created", sub_payload(user)))
+    r = user.post("/v1/billing/checkout", json={"mode": "subscription"})
+    assert r.status_code == 409 and r.json()["error"]["code"] == "already_subscribed"
+    assert fake.sessions == []
+    assert user.post("/v1/billing/checkout", json={"mode": "pay_per_use"}).status_code == 200
+
+
+def test_portal_session(exhausted_user, make_user, monkeypatch):
+    fake = RecordingStripe(monkeypatch)
+    user = exhausted_user
+    r = user.post("/v1/billing/portal")
+    assert r.json() == {"portal_url": "https://portal.stripe.test/p_1"}
+    assert fake.portals[0]["customer"] == user.customer
+    assert fake.portals[0]["return_url"].endswith("/settings#billing")
+    assert count(user.org_id, "SELECT count(*) FROM audit_logs WHERE action = 'billing.portal_opened'") == 1
+
+    other = make_user()
+    r = other.post("/v1/billing/portal")
+    assert r.status_code == 409 and r.json()["error"]["code"] == "no_billing_account"
+
+
+def async_session(user, **extra):
+    return {"id": "cs_async", "mode": "payment", "payment_status": "paid",
+            "payment_intent": f"pi_{uuid.uuid4().hex}", "amount_total": 50, "currency": "usd",
+            "customer": user.customer, "client_reference_id": user.org_id,
+            "metadata": {"organization_id": user.org_id}, **extra}
+
+
+def test_async_payment_succeeded_creates_credit_and_failed_does_not(client, exhausted_user):
+    user = exhausted_user
+    pending = async_session(user, payment_status="unpaid")
+    send(client, stripe_event("checkout.session.completed", pending))
+    assert user.get("/v1/billing/status").json()["pay_per_use_credits"] == 0
+    assert send(client, stripe_event("checkout.session.async_payment_succeeded",
+                                     {**pending, "payment_status": "paid"})).json()["status"] == "processed"
+    assert user.get("/v1/billing/status").json()["pay_per_use_credits"] == 1
+
+    failing = async_session(user, payment_status="unpaid")
+    send(client, stripe_event("checkout.session.completed", failing))
+    send(client, stripe_event("checkout.session.async_payment_failed", failing))
+    assert user.get("/v1/billing/status").json()["pay_per_use_credits"] == 1
+    assert count(user.org_id, "SELECT count(*) FROM payments WHERE status = 'failed'") == 1
+    # A late failure never downgrades a payment that already succeeded.
+    send(client, stripe_event("checkout.session.async_payment_failed", {**pending}))
+    assert user.get("/v1/billing/status").json()["pay_per_use_credits"] == 1
+
+
+def test_invoice_paid_restores_past_due(client, exhausted_user):
+    user = exhausted_user
+    sub = sub_payload(user)
+    send(client, stripe_event("customer.subscription.created", sub))
+    invoice = {"id": "in_1", "customer": user.customer, "subscription": sub["id"]}
+    send(client, stripe_event("invoice.payment_failed", invoice))
+    assert user.get("/v1/billing/status").json()["subscription"]["status"] == "past_due"
+    assert send(client, stripe_event("invoice.paid", invoice)).json()["status"] == "processed"
+    assert user.get("/v1/billing/status").json()["subscription"]["status"] == "active"
+
+
+def test_canceled_subscription_not_reverted_by_late_event(client, exhausted_user):
+    user = exhausted_user
+    sub = sub_payload(user)
+    send(client, stripe_event("customer.subscription.created", sub))
+    send(client, stripe_event("customer.subscription.deleted", {**sub, "status": "canceled"}))
+    send(client, stripe_event("customer.subscription.updated", sub))  # delivered late
+    assert user.get("/v1/billing/status").json()["subscription"]["status"] == "canceled"
+
+
+def test_webhook_rejects_oversized_body(client):
+    r = client.post("/v1/billing/webhook", content=b"x" * 1_100_000, headers={"Stripe-Signature": "t=1,v1=00"})
+    assert r.status_code == 413 and r.json()["error"]["code"] == "payload_too_large"
+
+
+def test_failed_handler_rolls_back_and_redelivery_processes(client, exhausted_user, monkeypatch):
+    from roletailor.services import stripe_webhooks
+
+    user = exhausted_user
+    real = stripe_webhooks.HANDLERS["checkout.session.completed"]
+    calls = {"n": 0}
+
+    def flaky(conn, org_id, obj):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            real(conn, org_id, obj)  # partial work must be rolled back too
+            raise RuntimeError("boom")
+        real(conn, org_id, obj)
+
+    monkeypatch.setitem(stripe_webhooks.HANDLERS, "checkout.session.completed", flaky)
+    event = stripe_event("checkout.session.completed", async_session(user))
+    body, headers = signed_webhook(event)
+    with pytest.raises(RuntimeError):
+        client.post("/v1/billing/webhook", content=body, headers=headers)
+    assert user.get("/v1/billing/status").json()["pay_per_use_credits"] == 0
+    assert send(client, event).json() == {"status": "processed"}
+    assert user.get("/v1/billing/status").json()["pay_per_use_credits"] == 1
+    assert send(client, event).json() == {"status": "duplicate"}
+
+
+def test_late_completed_event_does_not_unsettle_payment(client, exhausted_user):
+    user = exhausted_user
+    session = {"id": "cs_late", "mode": "payment", "payment_intent": f"pi_{uuid.uuid4().hex}",
+               "amount_total": 50, "currency": "usd", "customer": user.customer,
+               "metadata": {"organization_id": user.org_id, "mode": "pay_per_use"}}
+    settled = stripe_event("checkout.session.async_payment_succeeded", {**session, "payment_status": "paid"})
+    assert send(client, settled).json() == {"status": "processed"}
+    late = stripe_event("checkout.session.completed", {**session, "payment_status": "unpaid"})
+    assert send(client, late).json() == {"status": "processed"}
+    assert user.get("/v1/billing/status").json()["pay_per_use_credits"] == 1
+
+
+def test_past_due_subscription_blocks_second_checkout(client, exhausted_user):
+    user = exhausted_user
+    sub = {"id": f"sub_{uuid.uuid4().hex[:10]}", "customer": user.customer, "status": "past_due",
+           "items": {"data": [{"price": {"id": "price_sub_test"}, "current_period_end": int(time.time()) + 86400}]}}
+    assert send(client, stripe_event("customer.subscription.updated", sub)).json()["status"] == "processed"
+    r = user.post("/v1/billing/checkout", json={"mode": "subscription"})
+    assert r.status_code == 409 and r.json()["error"]["code"] == "already_subscribed"

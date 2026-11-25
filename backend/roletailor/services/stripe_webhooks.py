@@ -71,6 +71,9 @@ def _checkout_completed(conn: Connection, org_id: UUID, obj: Obj) -> None:
                 "INSERT INTO payments (organization_id, stripe_payment_intent_id, status, currency, amount_minor)"
                 " VALUES (:org, :pi, :status, :cur, :amount)"
                 " ON CONFLICT (stripe_payment_intent_id) DO UPDATE SET status = EXCLUDED.status"
+                # Events can arrive out of order: a late "completed" must not move a
+                # settled, failed or refunded payment back.
+                " WHERE payments.status = 'pending'"
             ),
             {
                 "org": org_id, "pi": obj["payment_intent"],
@@ -80,6 +83,29 @@ def _checkout_completed(conn: Connection, org_id: UUID, obj: Obj) -> None:
         )
     audit.record(conn, org_id=org_id, action="billing.checkout_completed", resource_type="organization",
                  resource_id=org_id, metadata={"session_id": obj.get("id"), "mode": obj.get("mode")})
+
+
+def _payment_async_result(conn: Connection, org_id: UUID, obj: Obj) -> None:
+    """Delayed payment methods (bank debits): the session completes unpaid, then settles."""
+    if obj.get("mode") != "payment" or not obj.get("payment_intent"):
+        return
+    paid = obj.get("payment_status") == "paid"
+    conn.execute(
+        text(
+            "INSERT INTO payments (organization_id, stripe_payment_intent_id, status, currency, amount_minor)"
+            " VALUES (:org, :pi, :status, :cur, :amount)"
+            " ON CONFLICT (stripe_payment_intent_id) DO UPDATE SET status = EXCLUDED.status"
+            # A failure never downgrades money already received (or refunded).
+            " WHERE payments.status = 'pending'"
+            " OR (EXCLUDED.status = 'succeeded' AND payments.status <> 'refunded')"
+        ),
+        {
+            "org": org_id, "pi": obj["payment_intent"], "status": "succeeded" if paid else "failed",
+            "cur": (obj.get("currency") or "usd").upper(), "amount": obj.get("amount_total") or 0,
+        },
+    )
+    audit.record(conn, org_id=org_id, action="billing.payment_succeeded" if paid else "billing.payment_failed",
+                 resource_type="organization", resource_id=org_id, metadata={"session_id": obj.get("id")})
 
 
 def _subscription_changed(conn: Connection, org_id: UUID, obj: Obj) -> None:
@@ -94,6 +120,11 @@ def _subscription_changed(conn: Connection, org_id: UUID, obj: Obj) -> None:
             " ON CONFLICT (stripe_subscription_id) DO UPDATE SET stripe_price_id = EXCLUDED.stripe_price_id,"
             " status = EXCLUDED.status, current_period_end = EXCLUDED.current_period_end,"
             " cancel_at_period_end = EXCLUDED.cancel_at_period_end"
+            # Ordering rule (Stripe does not guarantee delivery order, and there is no
+            # per-row event timestamp column): 'canceled' is terminal in Stripe, a
+            # subscription is never reactivated, so a late created/updated event must not
+            # revert it. Only the deleted event itself may write over it (idempotent).
+            " WHERE subscriptions.status <> 'canceled' OR EXCLUDED.status = 'canceled'"
         ),
         {
             "org": org_id, "sid": obj["id"], "price": (first.get("price") or {}).get("id") or "unknown",
@@ -127,6 +158,16 @@ def _invoice_payment_failed(conn: Connection, org_id: UUID, obj: Obj) -> None:
                  metadata={"invoice_id": obj.get("id"), "stripe_subscription_id": subscription_id})
 
 
+def _invoice_paid(conn: Connection, org_id: UUID, obj: Obj) -> None:
+    # Robust to ordering: subscription.updated normally restores 'active' already.
+    if subscription_id := _invoice_subscription_id(obj):
+        conn.execute(
+            text("UPDATE subscriptions SET status = 'active'"
+                 " WHERE stripe_subscription_id = :sid AND status = 'past_due'"),
+            {"sid": subscription_id},
+        )
+
+
 def _charge_refunded(conn: Connection, org_id: UUID, obj: Obj) -> None:
     payment = fetch_one(
         conn,
@@ -148,7 +189,11 @@ HANDLERS: dict[str, Callable[[Connection, UUID, Obj], None]] = {
     "customer.subscription.created": _subscription_changed,
     "customer.subscription.updated": _subscription_changed,
     "customer.subscription.deleted": _subscription_changed,
+    "checkout.session.async_payment_succeeded": _payment_async_result,
+    "checkout.session.async_payment_failed": _payment_async_result,
     "invoice.payment_failed": _invoice_payment_failed,
+    "invoice.paid": _invoice_paid,
+    "invoice.payment_succeeded": _invoice_paid,
     "charge.refunded": _charge_refunded,
 }
 

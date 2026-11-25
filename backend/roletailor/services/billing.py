@@ -200,7 +200,7 @@ def _customer_id(client: stripe.StripeClient, conn: Connection, principal: Princ
         return org["stripe_customer_id"]
     customer = client.v1.customers.create(params={
         "name": org["name"], "metadata": {"organization_id": str(principal.org_id)},
-    })
+    }, options={"idempotency_key": f"customer-{principal.org_id}"})
     conn.execute(
         text("UPDATE organizations SET stripe_customer_id = :c WHERE id = :id"),
         {"c": customer.id, "id": principal.org_id},
@@ -224,16 +224,25 @@ def create_checkout(principal: Principal, mode: Literal["subscription", "pay_per
             "product_data": {"name": "RoleTailor single tailored resume"},
         }}
     with db.tenant_tx(principal.org_id) as conn:
+        if mode == "subscription" and fetch_one(
+            conn, "SELECT 1 AS x FROM subscriptions WHERE status IN ('active', 'trialing', 'past_due') LIMIT 1"
+        ):
+            raise AppError(409, "already_subscribed",
+                           "You already have a subscription. Manage it in the billing portal.")
         params: dict = {
             "mode": "subscription" if mode == "subscription" else "payment",
             "customer": _customer_id(client, conn, principal),
             "client_reference_id": str(principal.org_id),
             "line_items": [line_item],
             "metadata": metadata,
-            "success_url": f"{settings.app_base_url}/billing?checkout=success",
-            "cancel_url": f"{settings.app_base_url}/billing?checkout=cancelled",
+            "success_url": (
+                f"{settings.app_base_url}/settings?checkout=success"
+                "&session_id={CHECKOUT_SESSION_ID}#billing"
+            ),
+            "cancel_url": f"{settings.app_base_url}/settings?checkout=cancelled#billing",
         }
         if mode == "subscription":
+            params["allow_promotion_codes"] = True
             params["subscription_data"] = {"metadata": metadata}
         else:
             params["payment_intent_data"] = {"metadata": metadata}
@@ -242,5 +251,25 @@ def create_checkout(principal: Principal, mode: Literal["subscription", "pay_per
             conn, org_id=principal.org_id, action="billing.checkout_started",
             resource_type="organization", resource_id=principal.org_id,
             actor_user_id=principal.user_id, metadata={"mode": mode, "session_id": session.id},
+        )
+    return session.url
+
+
+def create_portal_session(principal: Principal) -> str:
+    """Stripe customer portal URL (cancel, payment method, invoices)."""
+    client = _stripe()
+    with db.tenant_tx(principal.org_id) as conn:
+        org = fetch_one(conn, "SELECT stripe_customer_id FROM organizations WHERE id = :id",
+                        {"id": principal.org_id})
+        if org is None or not org["stripe_customer_id"]:
+            raise AppError(409, "no_billing_account", "Start a subscription or purchase first.")
+        session = client.v1.billing_portal.sessions.create(params={
+            "customer": org["stripe_customer_id"],
+            "return_url": f"{get_settings().app_base_url}/settings#billing",
+        })
+        audit.record(
+            conn, org_id=principal.org_id, action="billing.portal_opened",
+            resource_type="organization", resource_id=principal.org_id,
+            actor_user_id=principal.user_id,
         )
     return session.url

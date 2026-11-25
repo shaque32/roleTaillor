@@ -29,6 +29,7 @@ AI routes return `428 consent_required` until the user grants `ai_processing` co
 |---|---|---|---|
 | GET | /resumes | | `[{id, name, origin, created_at, latest_version}]` |
 | POST | /resumes | multipart `file` (DOCX/PDF), `name` | `{resume, version}` where version has `blocks`, `findings`, `layout_metadata` |
+| POST | /resumes/text | `{text, name?}` | `{resume, version}`. Pasted plain text (200 to 50,000 chars; `422 resume_text_too_short`, `413 resume_text_too_long`). No source file is stored (`source_file_id` null); the version has `source_format: "text"` and `t{n}` block ids, and exports render through the structured ATS template |
 | POST | /resumes/guided | `{name, contact, sections:[{kind, title, items:[...]}]}` | `{resume, version}`. `contact` is the `Contact` model (`full_name` required). Items by section kind: experience `{company,title,location,start,end,bullets[]}`, education `{institution,degree,field,start,end,details}`, certifications `{name,issuer,date}`, projects `{name,link,description,bullets[]}`, anything else `{text}` (a bare string is accepted as `{text}`). The form is rendered to DOCX and re-parsed, so version blocks use DOCX ids (`p{n}`) |
 | GET | /resumes/{id} | | resume with `versions[]` |
 | PATCH | /resumes/{id} | `{name}` | resume |
@@ -73,7 +74,10 @@ CRUD at `/applications` (GET list, POST) and `/applications/{id}` (GET, PATCH, D
 |---|---|---|---|
 | GET | /billing/status | | `{free_used, free_limit, subscription: {id, stripe_subscription_id, status, current_period_end, cancel_at_period_end}|null, pay_per_use_credits}` (`subscription` is the active one, else the latest) |
 | POST | /billing/checkout | `{mode: subscription|pay_per_use}` | `{checkout_url}` (owner/admin only) |
-| POST | /billing/webhook | Stripe event (signature verified) | 200 |
+| POST | /billing/portal | | `{portal_url}` Stripe customer portal (owner/admin only). 409 `no_billing_account` if the org has never started checkout |
+| POST | /billing/webhook | Stripe event (signature verified) | 200 `{status: processed|duplicate|ignored}`; 400 `invalid_signature`; 413 body over 1 MB |
+
+`POST /billing/checkout` also returns 409 `already_subscribed` when `mode=subscription` and the organization already has an active or trialing subscription (use the portal instead), and 503 `billing_unavailable` when Stripe is not configured.
 
 ## Ops
 Served at the root, not under `/v1`: `GET /healthz` (liveness), `GET /readyz` (DB and Redis), `GET /metrics` (Prometheus).
