@@ -66,6 +66,9 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
         {mode === "login" ? "Sign in to pick up where you left off." : "10 free tailored resumes. No card required."}
       </p>
       <form onSubmit={onSubmit} className="mt-7 space-y-5" noValidate>
+        {mode === "login" && params.get("reset") === "1" && !error && (
+          <Alert tone="success">Your password was changed. Sign in with your new password.</Alert>
+        )}
         {error && <Alert tone="error">{error}</Alert>}
         {mode === "register" && (
           <Input name="full_name" label="Full name" autoComplete="name" required leading={<User />} error={fieldErrors.full_name} />
@@ -79,6 +82,13 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
           hint={mode === "register" ? "At least 10 characters." : undefined}
           error={fieldErrors.password}
         />
+        {mode === "login" && (
+          <p className="-mt-2 text-right text-sm">
+            <Link href="/forgot-password" className={cx("rounded font-medium text-brand-700 hover:underline", focusRing)}>
+              Forgot password?
+            </Link>
+          </p>
+        )}
         <Button type="submit" size="lg" className="w-full" loading={busy}>
           {mode === "login" ? (busy ? "Signing in…" : "Sign in") : busy ? "Creating your account…" : "Create account"}
         </Button>

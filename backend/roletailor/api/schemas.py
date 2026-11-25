@@ -28,6 +28,19 @@ class LoginIn(_Body):
     device_label: str | None = Field(default=None, max_length=200)
 
 
+class ForgotPasswordIn(_Body):
+    email: str = Field(max_length=320)
+
+
+class ResetPasswordIn(_Body):
+    token: str = Field(min_length=1, max_length=200)
+    password: str = Field(max_length=256)
+
+
+class VerifyEmailIn(_Body):
+    token: str = Field(min_length=1, max_length=200)
+
+
 class ProfilePatch(_Body):
     full_name: str | None = Field(default=None, min_length=1, max_length=200)
     address: dict[str, Any] | None = None

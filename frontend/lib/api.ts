@@ -136,10 +136,32 @@ async function session<T>(method: "POST" | "DELETE", json?: object): Promise<T> 
   return (res.status === 204 ? undefined : await res.json()) as T;
 }
 
+/** Public auth actions (no session needed), via app/api/auth. */
+async function publicAuth<T>(action: string, json: object): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`/api/auth/${action}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(json),
+      credentials: "same-origin",
+      cache: "no-store",
+    });
+  } catch {
+    throw new ApiError(0, "network_error", "You appear to be offline. Check your connection and try again.");
+  }
+  if (!res.ok) throw await toApiError(res);
+  return (await res.json()) as T;
+}
+
 export const auth = {
   login: (body: LoginBody) => session<Omit<AuthResponse, "token">>("POST", { action: "login", ...body }),
   register: (body: RegisterBody) => session<Omit<AuthResponse, "token">>("POST", { action: "register", ...body }),
   logout: () => session<void>("DELETE"),
+  forgotPassword: (email: string) => publicAuth<{ status: string }>("forgot-password", { email }),
+  resetPassword: (token: string, password: string) => publicAuth<{ status: string }>("reset-password", { token, password }),
+  verifyEmail: (token: string) => publicAuth<{ status: string }>("verify-email", { token }),
+  resendVerification: () => request<{ status: "sent" | "already_verified" }>("/auth/verify-email/resend", { method: "POST" }),
 };
 
 /* ---------- Typed endpoints ---------- */

@@ -28,6 +28,7 @@ export type TechnicalDepth = "low" | "medium" | "high";
 export interface User {
   id: UUID;
   email: string;
+  email_verified_at: string | null;
   full_name: string;
   address?: Address | null;
   contact_number?: string | null;

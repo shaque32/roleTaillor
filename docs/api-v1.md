@@ -14,6 +14,10 @@ Rate-limited routes (auth, workflow creation, iterations) return `429 rate_limit
 | POST | /auth/register | `{email, password, full_name}` | `{token, expires_at, user, organization}` (password >= 10 chars) |
 | POST | /auth/login | `{email, password, device_label?}` | `{token, expires_at, user, organization}`; `organization` is `{id, name, role}` |
 | POST | /auth/logout | | 204 |
+| POST | /auth/verify-email | `{token}` | `{status: "verified"}`; 400 `invalid_token` for a bad, expired or used link |
+| POST | /auth/verify-email/resend | | 202 `{status: "sent"}` or 200 `{status: "already_verified"}`; needs a session; 503 `email_unavailable` if the provider is down |
+| POST | /auth/forgot-password | `{email}` | always 202 `{status: "accepted"}`, whether or not the address has an account |
+| POST | /auth/reset-password | `{token, password}` | `{status: "password_reset"}`; revokes every session of the user; 400 `invalid_token`, 422 `weak_password` |
 | GET | /me | | `user` (profile + preferences + `consents: {ai_processing: bool}`) |
 | PATCH | /me | any of `full_name, address, contact_number, linkedin_url, preferred_page_limit, industry_focus, resume_tone, ats_preference, technical_depth, preferred_template_id` | `user` |
 | DELETE | /me | | 202 (right to delete) |
@@ -23,6 +27,9 @@ Rate-limited routes (auth, workflow creation, iterations) return `429 rate_limit
 | POST | /notifications/{id}/read | | notification |
 
 AI routes return `428 consent_required` until the user grants `ai_processing` consent.
+They return `403 email_unverified` until the address is confirmed (`user.email_verified_at` is set);
+`RT_REQUIRE_VERIFIED_EMAIL=false` turns that off. Emailed links carry the token in the URL fragment:
+`{app}/verify-email#token=...` and `{app}/reset-password#token=...`.
 
 ## Resumes
 | Method | Path | Body | Returns |

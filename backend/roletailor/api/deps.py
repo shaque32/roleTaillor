@@ -12,7 +12,7 @@ from fastapi import Depends, Header, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from roletailor.config import get_settings
-from roletailor.services import auth, users
+from roletailor.services import auth, email_auth, users
 from roletailor.services.auth import Principal
 from roletailor.services.errors import AppError
 
@@ -43,7 +43,14 @@ def require_role(*roles: str) -> Callable[[Principal], Principal]:
     return dependency
 
 
-def require_ai_consent(principal: CurrentPrincipal) -> Principal:
+def require_verified_email(principal: CurrentPrincipal) -> Principal:
+    if get_settings().require_verified_email and not email_auth.is_email_verified(principal.user_id):
+        raise AppError(403, "email_unverified", "Confirm your email address to continue."
+                       " We sent you a link when you signed up.")
+    return principal
+
+
+def require_ai_consent(principal: Annotated[Principal, Depends(require_verified_email)]) -> Principal:
     if not users.has_ai_consent(principal.user_id):
         raise AppError(428, "consent_required", "Allow AI processing of your resume to continue.",
                        {"purpose": users.AI_PROCESSING})

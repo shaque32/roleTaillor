@@ -6,6 +6,7 @@ import { api, ApiError } from "@/lib/api";
 import { isActive } from "@/lib/format";
 import type { WorkflowDetail } from "@/lib/types";
 import { Alert, Badge, Button, ButtonLink, Dialog, PageHeader, SkeletonRows, StatusBadge, TabPanel, Tabs, useToast } from "@/components/ui";
+import { ResendEmailButton, UNVERIFIED_MESSAGE, isEmailUnverified } from "@/components/VerifyEmailNotice";
 import { Progress } from "./Progress";
 import { SimulationPanel } from "./SimulationPanel";
 import { GapsPanel } from "./GapsPanel";
@@ -17,6 +18,7 @@ const POLL_MS = 2000;
 export function Review() {
   const { id } = useParams<{ id: string }>();
   const toast = useToast();
+  const [unverified, setUnverified] = useState(false);
   const [detail, setDetail] = useState<WorkflowDetail | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
   const [startedAt] = useState(() => Date.now());
@@ -79,9 +81,11 @@ export function Review() {
     try {
       const wf = action === "pause" ? await api.pauseWorkflow(id) : action === "resume" ? await api.resumeWorkflow(id) : await api.cancelWorkflow(id);
       setDetail((d) => (d ? { ...d, workflow: { ...d.workflow, ...wf } } : d));
+      setUnverified(false);
       restartPolling();
     } catch (e) {
-      toast.error(e);
+      if (isEmailUnverified(e)) setUnverified(true);
+      else toast.error(e);
     }
   }
 
@@ -110,6 +114,12 @@ export function Review() {
       {error && (
         <Alert tone="warning" className="mb-6">
           Connection hiccup: {error.message} We&apos;ll keep trying.
+        </Alert>
+      )}
+
+      {unverified && (
+        <Alert tone="warning" className="mb-6" action={<ResendEmailButton onAlreadyVerified={() => setUnverified(false)} />}>
+          {UNVERIFIED_MESSAGE}
         </Alert>
       )}
 
@@ -153,9 +163,11 @@ export function Review() {
                   onClick={async () => {
                     try {
                       await api.iterate(id, {});
+                      setUnverified(false);
                       restartPolling();
                     } catch (e) {
-                      toast.error(e);
+                      if (isEmailUnverified(e)) setUnverified(true);
+                      else toast.error(e);
                     }
                   }}
                 >

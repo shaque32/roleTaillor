@@ -3,11 +3,12 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import field_validator, model_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ENVIRONMENTS = frozenset({"dev", "test", "staging", "prod"})
+EMAIL_PROVIDERS = frozenset({"console", "memory", "resend"})
 PLANS = frozenset({"free", "subscription"})
 PLAN_LIMIT_KEYS = frozenset({"runs_per_day", "iterations"})
 
@@ -39,6 +40,20 @@ class Settings(BaseSettings):
     session_ttl_hours: int = 24 * 14
     cors_origins: list[str] = ["http://localhost:3000"]
 
+    # Transactional email (verification and password reset links).
+    # "console" writes the message to the log (dev only), "memory" keeps it in process
+    # (tests), "resend" sends through the Resend API and is required outside dev/test.
+    # See docs/email-setup.md.
+    email_provider: str = "console"
+    resend_api_key: str = Field(default="", validation_alias=AliasChoices("RT_RESEND_API_KEY", "RESEND_API_KEY"))
+    email_from: str = "RoleTailor <no-reply@roletailor.example>"
+    email_reply_to: str = ""
+    email_send_timeout_seconds: float = 10.0
+    email_verification_ttl_hours: int = 24
+    password_reset_ttl_minutes: int = 60
+    # Generations (the only step that costs model spend) need a confirmed address.
+    require_verified_email: bool = True
+
     # Billing
     stripe_secret_key: str = ""
     stripe_webhook_secret: str = ""
@@ -66,6 +81,9 @@ class Settings(BaseSettings):
     # Failed and successful logins per account per hour, and sign-ups per client per day.
     rate_limit_login_per_hour: int = 30
     rate_limit_register_per_day: int = 20
+    # Reset emails per address and verification emails per user, per hour.
+    rate_limit_password_reset_per_hour: int = 5
+    rate_limit_verification_email_per_hour: int = 5
     # Per-user limits on the other expensive endpoints, requests per minute.
     rate_limit_upload_per_minute: int = 10
     rate_limit_job_per_minute: int = 15
@@ -116,9 +134,23 @@ class Settings(BaseSettings):
     def _check_production_config(self) -> Settings:
         if self.environment not in ENVIRONMENTS:
             raise ValueError(f"RT_ENVIRONMENT must be one of {sorted(ENVIRONMENTS)}")
+        if self.email_provider not in EMAIL_PROVIDERS:
+            raise ValueError(f"RT_EMAIL_PROVIDER must be one of {sorted(EMAIL_PROVIDERS)}")
         if self.environment in {"dev", "test"}:
             return self
         problems: list[str] = []
+        # The console provider writes each email, with its one-time link, to the log. That
+        # is fine on a developer's machine and nowhere else: a shared log would hand a
+        # working password-reset link to anyone who can read it.
+        if self.email_provider != "resend":
+            problems.append("RT_EMAIL_PROVIDER must be 'resend' outside dev/test (console and memory"
+                            " are for local development and tests)")
+        else:
+            if not self.resend_api_key:
+                problems.append("RESEND_API_KEY must be set when RT_EMAIL_PROVIDER is 'resend'")
+            if ".example" in self.email_from or "@" not in self.email_from:
+                problems.append("RT_EMAIL_FROM must be an address on a domain verified in Resend,"
+                                f" got {self.email_from!r}")
         if self.secret_key == "dev-insecure-secret-change-me" or len(self.secret_key) < 32:
             problems.append("RT_SECRET_KEY must be set to 32+ characters")
         if self.storage_backend == "local":

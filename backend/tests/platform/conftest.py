@@ -37,6 +37,12 @@ os.environ.update({
     "RT_STRIPE_SECRET_KEY": "sk_test_dummy",
     "RT_STRIPE_SUBSCRIPTION_PRICE_ID": "price_sub_test",
     "RT_LOG_LEVEL": "WARNING",
+    "RT_EMAIL_PROVIDER": "memory",
+    # Most tests are not about verification; test_email_auth.py turns the gate back on.
+    "RT_REQUIRE_VERIFIED_EMAIL": "false",
+    **{f"RT_{name}": "100000" for name in (
+        "RATE_LIMIT_PASSWORD_RESET_PER_HOUR", "RATE_LIMIT_VERIFICATION_EMAIL_PER_HOUR",
+    )},
 })
 
 REPO_ROOT = Path(__file__).resolve().parents[3]

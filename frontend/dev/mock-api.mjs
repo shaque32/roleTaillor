@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 
 const PORT = Number(process.env.PORT || 8787);
 const NEW_USER = process.env.MOCK_NEW_USER === "1";
+const UNVERIFIED = process.env.MOCK_UNVERIFIED === "1"; // user starts with an unconfirmed email
 const ORIGIN = `http://localhost:${PORT}`;
 const ago = (days, hours = 0) => new Date(Date.now() - days * 864e5 - hours * 36e5).toISOString();
 const ahead = (days) => new Date(Date.now() + days * 864e5).toISOString();
@@ -14,6 +15,7 @@ const uid = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const user = {
   id: uid(1),
   email: "jordan.lee@example.com",
+  email_verified_at: UNVERIFIED ? null : ago(119),
   full_name: "Jordan Lee",
   address: { line1: "214 Alder Street", city: "Portland", region: "OR", postal_code: "97205", country: "US" },
   contact_number: "+1 503 555 0142",
@@ -176,6 +178,22 @@ const server = http.createServer(async (req, res) => {
 
   // auth
   if (a === "auth") {
+    if (b === "forgot-password") return send(res, 202, { status: "accepted" });
+    if (b === "reset-password") {
+      if (!body.token || body.token === "bad") return err(res, 400, "invalid_token", "This link is invalid or has expired.");
+      if (String(body.password || "").length < 10) return err(res, 422, "weak_password", "Use at least 10 characters.");
+      return send(res, 200, { status: "password_reset" });
+    }
+    if (b === "verify-email" && !c) {
+      if (!body.token || body.token === "bad") return err(res, 400, "invalid_token", "This link is invalid or has expired.");
+      user.email_verified_at = new Date().toISOString();
+      return send(res, 200, { status: "verified" });
+    }
+    if (b === "verify-email" && c === "resend") {
+      if (!/^Bearer \S+/.test(req.headers.authorization || "")) return err(res, 401, "unauthenticated", "Please sign in.");
+      if (user.email_verified_at) return send(res, 200, { status: "already_verified" });
+      return send(res, 202, { status: "sent" });
+    }
     if (b === "logout") return send(res, 204);
     if (b === "login" || b === "register") {
       if (b === "register" || body.email) {
@@ -260,6 +278,7 @@ const server = http.createServer(async (req, res) => {
     if (parts.length === 1) {
       if (m === "GET") return send(res, 200, workflows.map(rowOf));
       if (m === "POST") {
+        if (!user.email_verified_at) return err(res, 403, "email_unverified", "Confirm your email first.");
         if (!consentGranted) return err(res, 428, "consent_required", "AI processing consent required.");
         const j = jobs[body.job_posting_id];
         const vid = body.resume_version_id;
@@ -272,6 +291,7 @@ const server = http.createServer(async (req, res) => {
     const w = workflows.find((x) => x.id === b);
     if (!w) return err(res, 404, "not_found", "Workflow not found.");
     if (parts.length === 2 && m === "GET") return send(res, 200, detailOf(w));
+    if ((c === "iterations" || c === "resume") && m === "POST" && !user.email_verified_at) return err(res, 403, "email_unverified", "Confirm your email first.");
     if (c === "iterations" && m === "POST") { w.status = "queued"; return send(res, 202, w); }
     if (c === "pause") { w.status = "paused"; return send(res, 200, w); }
     if (c === "resume") { w.status = "running"; return send(res, 200, w); }
