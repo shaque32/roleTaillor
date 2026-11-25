@@ -424,6 +424,8 @@ export function ConsentDialog(props: { open: boolean; onClose: () => void; onGra
   - On validation failure, focus the first invalid field.
   - Footer link text unchanged; link gets `focusRing rounded`.
 
+> **Superseded 2026-11-25:** the consent step was removed from onboarding. Consent is asked only by `ConsentDialog` at the first tailoring. Onboarding has two steps (resume, job).
+
 #### 4.1.5 Onboarding: `app/(focus)/layout.tsx`, `Onboarding.tsx`
 
 - Layout: header without border (`bg-transparent`), `<DotBackground fade />` behind the top 320px of the page (wrapper `relative`), main `max-w-xl`.

@@ -70,8 +70,6 @@ for (const [vpName, vpOpts] of Object.entries(VIEWPORTS)) {
 
   await go(page, "/onboarding");
   await shot(page, "03-onboarding");
-  await go(page, "/onboarding?step=resume");
-  await shot(page, "03a-onboarding-resume");
   await go(page, `/onboarding?step=job&version=00000000-0000-4000-8000-000000000012`);
   await shot(page, "03b-onboarding-job");
 

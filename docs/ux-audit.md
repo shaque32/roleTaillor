@@ -28,8 +28,8 @@ Covers every screen from sign-up to settings, on desktop and phone. Ranked by co
 - No 3D or heavy backgrounds. One small animation library is added; five small visual components come from Aceternity UI and React Bits.
 - The upload box and billing panel are restyled only through shared styles, with no line edits, because PR #3 is changing those two files.
 
-## Decision for you
+## Decided
 
-The consent screen is the first thing a new user sees. We shortened it but kept it first. Asking only at the first tailoring would be smoother; that is a legal/privacy call, not a design one.
+AI consent is asked at the first tailoring, in a pop-up, not as the first onboarding screen (Arsh, 2026-11-25). Onboarding is now two steps: your resume, then your first job.
 
 Implementation detail: `frontend/dev/REDESIGN_SPEC.md`.
