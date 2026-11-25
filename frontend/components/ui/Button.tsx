@@ -2,19 +2,24 @@ import { forwardRef, type ButtonHTMLAttributes } from "react";
 import Link from "next/link";
 import { cx } from "@/lib/format";
 import { Spinner } from "./Spinner";
+import { focusRing } from "./styles";
 
-type Variant = "primary" | "secondary" | "ghost" | "danger";
-type Size = "sm" | "md";
+type Variant = "primary" | "secondary" | "soft" | "ghost" | "danger";
+type Size = "sm" | "md" | "lg";
 
-const base =
-  "inline-flex items-center justify-center gap-2 rounded-md font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:cursor-not-allowed disabled:opacity-50 whitespace-nowrap";
+const base = cx(
+  "inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors active:translate-y-px",
+  "disabled:cursor-not-allowed disabled:opacity-50 whitespace-nowrap",
+  focusRing,
+);
 const variants: Record<Variant, string> = {
   primary: "bg-brand-600 text-white hover:bg-brand-700",
-  secondary: "border border-slate-300 bg-white text-ink hover:bg-slate-50",
-  ghost: "text-ink-muted hover:bg-slate-100 hover:text-ink",
+  secondary: "border border-line bg-white text-ink shadow-sm hover:bg-surface-sunken",
+  soft: "bg-brand-50 text-brand-700 hover:bg-brand-100",
+  ghost: "text-ink-muted hover:bg-surface-sunken hover:text-ink",
   danger: "bg-red-600 text-white hover:bg-red-700",
 };
-const sizes: Record<Size, string> = { sm: "h-8 px-3 text-sm", md: "h-10 px-4 text-sm" };
+const sizes: Record<Size, string> = { sm: "h-9 px-3 text-sm", md: "h-11 px-4 text-sm", lg: "h-12 px-6 text-base" };
 
 export function buttonClass(variant: Variant = "primary", size: Size = "md", className?: string) {
   return cx(base, variants[variant], sizes[size], className);
@@ -42,6 +47,26 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       {loading && <Spinner className="h-4 w-4" />}
       {children}
     </button>
+  );
+});
+
+/** Square icon-only button. `label` becomes the accessible name and the tooltip. */
+export const IconButton = forwardRef<HTMLButtonElement, { label: string } & ButtonProps>(function IconButton(
+  { label, variant = "ghost", size = "md", className, children, ...buttonProps },
+  ref,
+) {
+  return (
+    <Button
+      ref={ref}
+      variant={variant}
+      size={size}
+      className={cx("shrink-0 !px-0", size === "sm" ? "w-9" : size === "lg" ? "w-12" : "w-11", className)}
+      aria-label={label}
+      title={label}
+      {...buttonProps}
+    >
+      {children}
+    </Button>
   );
 });
 

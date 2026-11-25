@@ -1,0 +1,219 @@
+"""Helpers for PDF tests: reportlab fixtures and a pixel-diff harness built on pypdfium2."""
+
+from __future__ import annotations
+
+import subprocess
+from collections.abc import Iterable
+from io import BytesIO
+from pathlib import Path
+
+import numpy as np
+import pikepdf
+import pypdfium2 as pdfium
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfgen import canvas
+
+from roletailor.documents.pdf_layout import pdf_paragraphs
+
+Box = tuple[int, float, float, float, float]  # page, x0, y0, x1, y1 in PDF points (y up)
+
+
+def render_page(data: bytes, page: int = 0, dpi: int = 100) -> np.ndarray:
+    """Render one page to an RGB array."""
+    pdf = pdfium.PdfDocument(data)
+    try:
+        return np.asarray(pdf[page].render(scale=dpi / 72).to_pil().convert("RGB"))
+    finally:
+        pdf.close()
+
+
+def block_boxes(data: bytes, block_ids: Iterable[str]) -> list[Box]:
+    """Bounding boxes (points) of the lines of the given blocks, bullet glyph included."""
+    wanted = set(block_ids)
+    boxes: list[Box] = []
+    for par in pdf_paragraphs(data):
+        if par.id in wanted:
+            for line in par.lines:
+                left = line.bullet_x0 if line.bullet_x0 is not None else line.x0
+                boxes.append((line.page, left, line.bottom, line.x1, line.top))
+    return boxes
+
+
+def pixel_diff(before: bytes, after: bytes, boxes: list[Box], *, page: int = 0, dpi: int = 100, pad: int = 4,
+               ) -> tuple[float, int]:
+    """Fraction of pixels that differ outside `boxes` (padded), and pixels that differ inside them."""
+    a, b = render_page(before, page, dpi), render_page(after, page, dpi)
+    assert a.shape == b.shape
+    height, scale = a.shape[0], dpi / 72
+    inside = np.zeros(a.shape[:2], dtype=bool)
+    for box_page, x0, y0, x1, y1 in boxes:
+        if box_page != page:
+            continue
+        left, right = int(x0 * scale) - pad, int(x1 * scale) + pad + 1
+        top, bottom = int(height - y1 * scale) - pad, int(height - y0 * scale) + pad + 1
+        inside[max(top, 0):bottom, max(left, 0):right] = True
+    changed = (a != b).any(axis=2)
+    return float(changed[~inside].sum() / changed.size), int(changed[inside].sum())
+
+
+def font_file(family: str) -> Path | None:
+    try:
+        out = subprocess.run(["fc-match", "-f", "%{file}|%{family}", family], capture_output=True, text=True,
+                             check=True).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    path, _, found = out.partition("|")
+    return Path(path) if family.lower() in found.lower() else None
+
+
+def helvetica_pdf() -> bytes:
+    """Standard-14 Helvetica: heading, paragraph, hyphen bullets in the same string as their text, a date."""
+    buf = BytesIO()
+    c = canvas.Canvas(buf, pagesize=letter)
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(72, 720, "SUMMARY")
+    c.setFont("Helvetica", 10.5)
+    c.drawString(72, 702, "Backend engineer building payment systems.")
+    c.drawString(72, 684, "- Reduced latency by 40% across checkout services.")
+    c.drawString(72, 666, "- Mentored four engineers on the platform team.")
+    c.drawString(72, 648, "Acme Corp - Senior Engineer")
+    c.drawRightString(540, 648, "2020 - 2023")
+    c.save()
+    return buf.getvalue()
+
+
+def two_page_pdf() -> bytes:
+    buf = BytesIO()
+    c = canvas.Canvas(buf, pagesize=letter)
+    c.setFont("Helvetica", 10.5)
+    c.drawString(72, 720, "First page keeps its text.")
+    c.showPage()
+    c.setFont("Helvetica", 10.5)
+    c.drawString(72, 720, "Second page opening line.")
+    c.drawString(72, 702, "Second page closing line.")
+    c.save()
+    return buf.getvalue()
+
+
+def form_xobject_pdf() -> bytes:
+    """One line drawn normally and one inside a Form XObject."""
+    buf = BytesIO()
+    c = canvas.Canvas(buf, pagesize=letter)
+    c.beginForm("hidden")
+    c.setFont("Helvetica", 10.5)
+    c.drawString(72, 684, "Hidden inside a form.")
+    c.endForm()
+    c.setFont("Helvetica", 10.5)
+    c.drawString(72, 702, "Visible on the page.")
+    c.doForm("hidden")
+    c.save()
+    return buf.getvalue()
+
+
+def ttf_embedded_pdf(path: Path) -> bytes:
+    """A TrueType font embedded (and subset) by reportlab."""
+    name = "TestEmbedded"
+    if name not in pdfmetrics.getRegisteredFontNames():
+        pdfmetrics.registerFont(TTFont(name, str(path)))
+    buf = BytesIO()
+    c = canvas.Canvas(buf, pagesize=letter)
+    c.setFont(name, 11)
+    c.drawString(72, 702, "Platform engineer focused on reliability.")
+    c.drawString(72, 684, "Built an internal developer portal.")
+    c.save()
+    return buf.getvalue()
+
+
+LEFT_BULLETS = [
+    "Cut nightly batch runtime by 70 percent.",
+    "Mentored four engineers on the data team.",
+    "Built a feature store serving 120 models daily.",
+    "Led migration of 300 DAGs to Airflow 2.",
+    "Reduced cloud spend by 31 percent in a year.",
+    "Wrote the on-call runbook for pipelines.",
+]
+RIGHT_BULLETS = [
+    "Shipped a payments ledger, exactly-once.",
+    "Owned p99 latency for checkout.",
+    "Introduced contract tests across services.",
+    "Hired and onboarded six backend engineers.",
+    "Drove the PCI audit to a clean result.",
+    "Rewrote the retry policy for webhooks.",
+]
+
+
+def two_column_pdf() -> bytes:
+    """A full-width heading, two bullet columns sharing baselines (gutter wider than 1.5 em), a full-width footer."""
+    buf = BytesIO()
+    c = canvas.Canvas(buf, pagesize=letter)
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(72, 730, "EXPERIENCE")
+    c.setFont("Helvetica", 10)
+    y = 700
+    for left, right in zip(LEFT_BULLETS, RIGHT_BULLETS, strict=True):
+        c.drawString(72, y, "-")
+        c.drawString(84, y, left)
+        c.drawString(330, y, "-")
+        c.drawString(342, y, right)
+        y -= 18
+    c.drawString(72, y - 10, "Languages: English, Hindi")
+    c.save()
+    return buf.getvalue()
+
+
+def title_date_rows_pdf() -> bytes:
+    """Five job-title rows, each with a right-aligned date of identical width: dates are not columns."""
+    buf = BytesIO()
+    c = canvas.Canvas(buf, pagesize=letter)
+    c.setFont("Helvetica", 10)
+    for n, title in enumerate(["Acme - Engineer", "Globex - Lead", "Initech - Developer", "Umbrella - Architect",
+                               "Hooli - Manager"]):
+        c.drawString(72, 700 - 30 * n, title)
+        c.drawRightString(540, 700 - 30 * n, "2020 - 2023")
+    c.save()
+    return buf.getvalue()
+
+
+def one_text_object_pdf() -> bytes:
+    """Several paragraphs inside a single BT...ET, using text lines, relative moves and a leading."""
+    buf = BytesIO()
+    c = canvas.Canvas(buf, pagesize=letter)
+    text = c.beginText(72, 720)
+    text.setFont("Helvetica", 10.5)
+    text.setLeading(18)
+    text.textLine("First paragraph about platform work.")
+    text.textLine("Second paragraph about mentoring.")
+    text.moveCursor(0, 6)
+    text.textLine("Third paragraph about reliability.")
+    text.textOut("Fourth paragraph ")
+    text.textOut("ends mid-line.")
+    text.textLine("")
+    text.textLine("Fifth paragraph closes the page.")
+    c.drawText(text)
+    c.save()
+    return buf.getvalue()
+
+
+def font_dictionary(spec: dict) -> pikepdf.Dictionary:
+    """A font dictionary from a plain dict; strings starting with `/` become names."""
+    return pikepdf.Dictionary({
+        key: pikepdf.Name(value) if isinstance(value, str) and value.startswith("/") else value
+        for key, value in spec.items()})
+
+
+def raw_pdf(content: str, font: dict | None = None, extra_fonts: dict[str, dict] | None = None) -> bytes:
+    """One page whose content stream is `content`; `/F1` is Helvetica (WinAnsi) unless `font` replaces it."""
+    pdf = pikepdf.Pdf.new()
+    pdf.add_blank_page(page_size=(612, 792))
+    fonts = {"/F1": font or {"/Type": "/Font", "/Subtype": "/Type1", "/BaseFont": "/Helvetica",
+                             "/Encoding": "/WinAnsiEncoding"}}
+    fonts.update(extra_fonts or {})
+    page = pdf.pages[0].obj
+    page.Resources = pikepdf.Dictionary(Font=pikepdf.Dictionary(
+        {name: pdf.make_indirect(font_dictionary(spec)) for name, spec in fonts.items()}))
+    page.Contents = pdf.make_stream(content.encode("latin-1"))
+    out = BytesIO()
+    pdf.save(out)
+    return out.getvalue()

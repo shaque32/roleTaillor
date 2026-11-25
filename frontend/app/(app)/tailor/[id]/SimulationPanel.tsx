@@ -1,18 +1,27 @@
-import { FlaskConical } from "lucide-react";
+import { AlertTriangle, Lightbulb, ThumbsUp } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import type { HiringManagerFeedback } from "@/lib/types";
 import { formatScore } from "@/lib/format";
-import { Badge, Card, CardBody, CardHeader, ScoreBar } from "@/components/ui";
+import { Alert, Badge, ScoreBar, Section } from "@/components/ui";
 
-const LIKELIHOOD_TONE = { low: "amber", moderate: "blue", high: "green" } as const;
+const LIKELIHOOD_TONE = {
+  low: "amber",
+  moderate: "blue",
+  high: "green",
+} as const;
 
-function List({ title, items }: { title: string; items: string[] }) {
+function Column({ title, icon: Icon, items }: { title: string; icon: LucideIcon; items: string[] }) {
   if (!items.length) return null;
   return (
     <div>
-      <h3 className="text-sm font-semibold">{title}</h3>
-      <ul className="mt-1.5 list-disc space-y-1 pl-5 text-sm text-ink-muted">
+      <h3 className="flex items-center gap-2 text-base font-semibold">
+        <Icon className="h-4 w-4 text-ink-muted" aria-hidden /> {title}
+      </h3>
+      <ul className="mt-2 divide-y divide-line text-sm text-ink-muted">
         {items.map((x, i) => (
-          <li key={i}>{x}</li>
+          <li key={i} className="py-2.5 first:pt-0">
+            {x}
+          </li>
         ))}
       </ul>
     </div>
@@ -20,49 +29,40 @@ function List({ title, items }: { title: string; items: string[] }) {
 }
 
 export function SimulationPanel({ feedback, score }: { feedback: HiringManagerFeedback | null; score: number | null }) {
+  const overall = feedback?.overall ?? score;
   return (
-    <Card as="section" className="border-dashed">
-      <CardHeader
-        title="Hiring-manager simulation"
-        description={
-          <span className="inline-flex items-center gap-1.5 font-medium text-amber-800">
-            <FlaskConical className="h-3.5 w-3.5" aria-hidden />
-            AI simulation, not a prediction of hiring outcomes
+    <Section title="Hiring-manager view">
+      <div className="space-y-6">
+        <Alert tone="warning">This is an AI simulation, not a prediction of hiring outcomes.</Alert>
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-4xl font-semibold tabular-nums" aria-label={`Simulation score ${formatScore(overall)}`}>
+            {formatScore(overall)}
           </span>
-        }
-        action={
-          <span className="text-2xl font-semibold tabular-nums" aria-label={`Simulation score ${formatScore(feedback?.overall ?? score)}`}>
-            {formatScore(feedback?.overall ?? score)}
-          </span>
-        }
-      />
-      <CardBody className="space-y-5">
+          {feedback && (
+            <Badge tone={LIKELIHOOD_TONE[feedback.interview_likelihood] ?? "neutral"}>
+              Simulated interview likelihood: <span className="capitalize">{feedback.interview_likelihood}</span>
+            </Badge>
+          )}
+        </div>
         {!feedback ? (
-          <p className="text-sm text-ink-muted">No simulated feedback for this iteration.</p>
+          <p className="text-sm text-ink-muted">No simulated feedback for this version.</p>
         ) : (
           <>
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-ink-muted">Simulated interview likelihood:</span>
-              <Badge tone={LIKELIHOOD_TONE[feedback.interview_likelihood] ?? "neutral"}>{feedback.interview_likelihood}</Badge>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-5 sm:grid-cols-2">
               <ScoreBar label="Technical alignment" value={feedback.technical_alignment} />
               <ScoreBar label="Leadership" value={feedback.leadership} />
               <ScoreBar label="Domain alignment" value={feedback.domain_alignment} />
               <ScoreBar label="Communication" value={feedback.communication} />
             </div>
-            <details className="group" open>
-              <summary className="cursor-pointer text-sm font-medium text-brand-600">Strengths, weaknesses and suggestions</summary>
-              <div className="mt-4 space-y-4">
-                <List title="Strengths" items={feedback.strengths} />
-                <List title="Weaknesses" items={feedback.weaknesses} />
-                <List title="Suggestions" items={feedback.suggested_improvements} />
-                {feedback.competitive_positioning && <p className="text-sm text-ink-muted">{feedback.competitive_positioning}</p>}
-              </div>
-            </details>
+            <div className="grid gap-6 md:grid-cols-3">
+              <Column title="Strengths" icon={ThumbsUp} items={feedback.strengths} />
+              <Column title="Weaknesses" icon={AlertTriangle} items={feedback.weaknesses} />
+              <Column title="Suggestions" icon={Lightbulb} items={feedback.suggested_improvements} />
+            </div>
+            {feedback.competitive_positioning && <p className="text-sm text-ink-muted">{feedback.competitive_positioning}</p>}
           </>
         )}
-      </CardBody>
-    </Card>
+      </div>
+    </Section>
   );
 }

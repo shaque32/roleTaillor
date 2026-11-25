@@ -6,9 +6,9 @@ import { useState } from "react";
 import { Archive, FilePlus2, FileText, History, Pencil, Upload } from "lucide-react";
 import { api } from "@/lib/api";
 import { useResource } from "@/lib/hooks";
-import { formatDate } from "@/lib/format";
+import { cx, formatDate } from "@/lib/format";
 import type { ResumeListItem } from "@/lib/types";
-import { Alert, Badge, Button, ButtonLink, Dialog, EmptyState, Input, PageHeader, SkeletonRows, useToast } from "@/components/ui";
+import { Alert, Badge, Button, ButtonLink, Card, Dialog, EmptyState, IconButton, Input, PageHeader, SkeletonRows, focusRing, useToast } from "@/components/ui";
 import { ResumeUpload } from "@/components/ResumeUpload";
 import { VersionList } from "./VersionList";
 
@@ -62,16 +62,16 @@ export function Resumes() {
         description="Your source resumes. Tailored versions are created from these."
         actions={
           <>
-            <ButtonLink href="/resumes/new" variant="secondary">
-              <FilePlus2 className="h-4 w-4" aria-hidden /> Build from scratch
-            </ButtonLink>
             <Button onClick={() => setUploadOpen(true)}>
               <Upload className="h-4 w-4" aria-hidden /> Upload
             </Button>
+            <ButtonLink href="/resumes/new" variant="secondary">
+              <FilePlus2 className="h-4 w-4" aria-hidden /> Build from scratch
+            </ButtonLink>
           </>
         }
       />
-      {loading && <SkeletonRows />}
+      {loading && !data && <SkeletonRows rows={4} />}
       {error && <Alert tone="error">{error.message}</Alert>}
       {data && data.length === 0 && (
         <EmptyState
@@ -79,49 +79,61 @@ export function Resumes() {
           title="No resumes yet"
           description="Upload a DOCX or PDF, or build one with our guided editor."
           action={<Button onClick={() => setUploadOpen(true)}>Upload a resume</Button>}
+          secondaryAction={
+            <ButtonLink href="/resumes/new" variant="secondary">
+              Build from scratch
+            </ButtonLink>
+          }
         />
       )}
       {data && data.length > 0 && (
-        <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200 bg-white">
+        <ul className="space-y-3">
           {data.map((r) => (
-            <li key={r.id} className="px-5 py-4">
-              <div className="flex flex-wrap items-center gap-4">
-                <div className="min-w-0 flex-1">
-                  <Link href={`/resumes/${r.id}`} className="font-medium hover:underline">
-                    {r.name}
-                  </Link>
-                  <p className="mt-0.5 flex flex-wrap items-center gap-2 text-sm text-ink-muted">
-                    <Badge>{r.origin === "upload" ? "Uploaded" : "Built here"}</Badge>
-                    {r.latest_version && <span>v{r.latest_version.version_number}</span>}
-                    <span>Added {formatDate(r.created_at)}</span>
-                  </p>
+            <li key={r.id}>
+              <Card>
+                <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:p-5">
+                  <div className="flex min-w-0 flex-1 items-center gap-4">
+                    <div className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-600" aria-hidden>
+                      <FileText className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <Link href={`/resumes/${r.id}`} className={cx("break-words rounded text-base font-medium hover:underline", focusRing)}>
+                        {r.name}
+                      </Link>
+                      <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink-muted">
+                        <Badge>{r.origin === "upload" ? "Uploaded" : "Built here"}</Badge>
+                        {r.latest_version && <span>v{r.latest_version.version_number}</span>}
+                        <span>Added {formatDate(r.created_at)}</span>
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <ButtonLink href={`/tailor/new?version=${r.latest_version?.id ?? ""}`} size="sm">
+                      Tailor
+                    </ButtonLink>
+                    <Button size="sm" variant="ghost" onClick={() => setVersionsFor((v) => (v === r.id ? null : r.id))} aria-expanded={versionsFor === r.id}>
+                      <History className="h-4 w-4" aria-hidden /> Versions
+                    </Button>
+                    <IconButton size="sm" label={`Rename ${r.name}`} onClick={() => setRenaming(r)}>
+                      <Pencil className="h-4 w-4" aria-hidden />
+                    </IconButton>
+                    <IconButton size="sm" label={`Archive ${r.name}`} onClick={() => setArchiving(r)}>
+                      <Archive className="h-4 w-4" aria-hidden />
+                    </IconButton>
+                  </div>
                 </div>
-                <div className="flex flex-wrap gap-1">
-                  <ButtonLink href={`/tailor/new?version=${r.latest_version?.id ?? ""}`} size="sm" variant="secondary">
-                    Tailor
-                  </ButtonLink>
-                  <Button size="sm" variant="ghost" onClick={() => setVersionsFor((v) => (v === r.id ? null : r.id))} aria-expanded={versionsFor === r.id}>
-                    <History className="h-4 w-4" aria-hidden /> Versions
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => setRenaming(r)} aria-label={`Rename ${r.name}`}>
-                    <Pencil className="h-4 w-4" aria-hidden />
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => setArchiving(r)} aria-label={`Archive ${r.name}`}>
-                    <Archive className="h-4 w-4" aria-hidden />
-                  </Button>
-                </div>
-              </div>
-              {versionsFor === r.id && (
-                <div className="mt-4">
-                  <VersionList resumeId={r.id} onRestored={() => void reload()} />
-                </div>
-              )}
+                {versionsFor === r.id && (
+                  <div className="border-t border-line px-4 py-2 sm:px-5">
+                    <VersionList resumeId={r.id} onRestored={() => void reload()} />
+                  </div>
+                )}
+              </Card>
             </li>
           ))}
         </ul>
       )}
 
-      <Dialog open={uploadOpen} onClose={() => setUploadOpen(false)} title="Upload a resume">
+      <Dialog open={uploadOpen} onClose={() => setUploadOpen(false)} title="Upload a resume" size="lg">
         <ResumeUpload
           onUploaded={({ resume }) => {
             setUploadOpen(false);
@@ -131,10 +143,10 @@ export function Resumes() {
         />
       </Dialog>
 
-      <Dialog open={Boolean(renaming)} onClose={() => setRenaming(null)} title="Rename resume">
-        <form onSubmit={rename} className="space-y-4">
+      <Dialog open={Boolean(renaming)} onClose={() => setRenaming(null)} title="Rename resume" size="sm">
+        <form onSubmit={rename} className="space-y-6">
           <Input name="name" label="Name" defaultValue={renaming?.name} required autoFocus />
-          <div className="flex justify-end gap-2">
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <Button variant="secondary" onClick={() => setRenaming(null)}>
               Cancel
             </Button>
@@ -148,18 +160,20 @@ export function Resumes() {
       <Dialog
         open={Boolean(archiving)}
         onClose={() => setArchiving(null)}
+        size="sm"
         title="Archive this resume?"
         description={`“${archiving?.name ?? ""}” will be hidden from your list. Tailored resumes made from it stay available.`}
-      >
-        <div className="flex justify-end gap-2">
-          <Button variant="secondary" onClick={() => setArchiving(null)}>
-            Cancel
-          </Button>
-          <Button variant="danger" onClick={archive} loading={busy}>
-            Archive
-          </Button>
-        </div>
-      </Dialog>
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setArchiving(null)}>
+              Cancel
+            </Button>
+            <Button variant="danger" onClick={archive} loading={busy}>
+              Archive
+            </Button>
+          </>
+        }
+      />
     </>
   );
 }

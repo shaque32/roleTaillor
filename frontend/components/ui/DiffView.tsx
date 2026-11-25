@@ -1,42 +1,59 @@
 "use client";
 
 import { useMemo } from "react";
-import { diffWords } from "@/lib/diff";
+import { diffPhrases } from "@/lib/diff";
+import { cx } from "@/lib/format";
 
-/** Before/after with word-level highlighting. Stacked on mobile, side by side on wide screens. */
-export function DiffView({ before, after }: { before: string; after: string }) {
-  const segs = useMemo(() => diffWords(before, after), [before, after]);
+/**
+ * Before/after with phrase-level highlighting. After comes first when stacked (below md, or layout="stacked").
+ * When most of the text changed (reordered or rewritten) highlighting is turned off because it would only add noise.
+ */
+export function DiffView({ before, after, layout = "auto" }: { before: string; after: string; layout?: "auto" | "stacked" }) {
+  const { segments, ratio } = useMemo(() => diffPhrases(before, after), [before, after]);
+  const plain = ratio > 0.6;
+  const stacked = layout === "stacked";
   return (
-    <div className="grid gap-3 md:grid-cols-2">
-      <div>
-        <p className="mb-1 text-xs font-medium uppercase tracking-wide text-ink-faint">Before</p>
-        <p className="whitespace-pre-wrap rounded-md bg-slate-50 p-3 text-sm leading-relaxed text-ink-muted">
-          {segs.map((s, i) =>
-            s.op === "insert" ? null : s.op === "delete" ? (
-              <del key={i} className="rounded-sm bg-red-100 text-red-800 decoration-red-400">
-                {s.text}
-              </del>
+    <div>
+      {plain && <p className="mb-3 text-xs text-ink-muted">Mostly rewritten or reordered</p>}
+      <div className={cx("grid gap-4", !stacked && "md:grid-cols-2 md:gap-8")}>
+        <div className={cx("min-w-0", stacked ? "order-1" : "order-1 md:order-2")}>
+          <p className="mb-1.5 text-xs font-medium text-ink-muted">Suggested rewrite</p>
+          <p className="whitespace-pre-wrap text-base leading-relaxed text-ink">
+            {plain ? (
+              after
             ) : (
-              <span key={i}>{s.text}</span>
-            ),
-          )}
-          {!before && <span className="italic text-ink-faint">(empty)</span>}
-        </p>
-      </div>
-      <div>
-        <p className="mb-1 text-xs font-medium uppercase tracking-wide text-ink-faint">After</p>
-        <p className="whitespace-pre-wrap rounded-md bg-slate-50 p-3 text-sm leading-relaxed text-ink">
-          {segs.map((s, i) =>
-            s.op === "delete" ? null : s.op === "insert" ? (
-              <ins key={i} className="rounded-sm bg-emerald-100 text-emerald-900 no-underline">
-                {s.text}
-              </ins>
+              segments.map((s, i) =>
+                s.op === "delete" ? null : s.op === "insert" ? (
+                  <ins key={i} className="rounded bg-emerald-100 px-0.5 text-emerald-900 no-underline">
+                    {s.text}
+                  </ins>
+                ) : (
+                  <span key={i}>{s.text}</span>
+                ),
+              )
+            )}
+            {!after && <span className="italic text-ink-muted">(removed)</span>}
+          </p>
+        </div>
+        <div className={cx("min-w-0", stacked ? "order-2 border-l-2 border-line pl-4" : "order-2 border-l-2 border-line pl-4 md:order-1 md:border-l-0 md:pl-0")}>
+          <p className="mb-1.5 text-xs font-medium text-ink-muted">Your original</p>
+          <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink-muted">
+            {plain ? (
+              before
             ) : (
-              <span key={i}>{s.text}</span>
-            ),
-          )}
-          {!after && <span className="italic text-ink-faint">(removed)</span>}
-        </p>
+              segments.map((s, i) =>
+                s.op === "insert" ? null : s.op === "delete" ? (
+                  <del key={i} className="text-ink-muted decoration-red-400">
+                    {s.text}
+                  </del>
+                ) : (
+                  <span key={i}>{s.text}</span>
+                ),
+              )
+            )}
+            {!before && <span className="italic">(empty)</span>}
+          </p>
+        </div>
       </div>
     </div>
   );
