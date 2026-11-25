@@ -57,6 +57,7 @@ def tailor(
     prefs: TailoringPrefs,
     gateway: Gateway,
     source_docx: bytes | None = None,
+    source_pdf: bytes | None = None,
     cached_structure: ResumeStructure | None = None,
     cached_job: JobAnalysis | None = None,
     iteration: int = 1,
@@ -95,6 +96,10 @@ def tailor(
     if source_docx is not None and edits:
         edits, page_count, page_outcome = _enforce_page_limit(source_docx, edits, document, prefs.page_limit)
         outcomes.append(page_outcome)
+        accepted = {b: r for b, r in accepted.items() if b in edits}
+    elif source_pdf is not None and edits:
+        edits, fit_outcome = _fit_pdf_layout(source_pdf, edits)
+        outcomes.append(fit_outcome)
         accepted = {b: r for b, r in accepted.items() if b in edits}
 
     outcomes += _rule_outcomes(log_by_rule, dropped, len(plan.block_plans))
@@ -204,6 +209,36 @@ def _rewrite_and_validate(gateway: Gateway, *, document: ParsedDocument, plan, s
     if verifier_down and not accepted:
         raise AIUnavailable(f"{it}:verify_claims", "claim verifier unavailable")
     return accepted, log_by_rule, sorted(pending)
+
+
+# Above this share of edits lost to layout, content wins: keep every edit and let the
+# renderer fall back to the ATS template instead of the original PDF layout.
+PDF_FIT_MAX_DROP_RATIO = 0.5
+
+
+def _fit_pdf_layout(source_pdf: bytes, edits: dict[str, str]) -> tuple[dict[str, str], ValidationOutcome]:
+    """Keep the original PDF layout: revert edits that cannot be drawn in their own lines
+    (overflow, missing glyphs, mixed styles). The page count can never change in place.
+    If more than half the edits would be lost, keep them all; rendering then uses the
+    template, which is recorded on the generated version."""
+    def outcome(mode: str, reverted: dict[str, str]) -> ValidationOutcome:
+        return ValidationOutcome(
+            rule_key="layout.pdf_in_place", rule_version=RULE_VERSION, passed=True,
+            score=round(100.0 * (1 - len(reverted) / len(edits)), 1),
+            details={"mode": mode, "reverted": reverted})
+
+    try:
+        from roletailor.documents import fit_pdf_edits
+
+        kept, dropped = fit_pdf_edits(source_pdf, edits)
+    except Exception as e:  # noqa: BLE001 - layout fitting is best effort; never fail a generation
+        log.warning("PDF layout fit skipped: %s", e)
+        return edits, ValidationOutcome(
+            rule_key="layout.pdf_in_place", rule_version=RULE_VERSION, passed=True,
+            details={"skipped": str(e)[:200]})
+    if len(dropped) > PDF_FIT_MAX_DROP_RATIO * len(edits):
+        return edits, outcome("template", dropped)
+    return kept, outcome("in_place", dropped)
 
 
 def _enforce_page_limit(source_docx: bytes, edits: dict[str, str], document: ParsedDocument,

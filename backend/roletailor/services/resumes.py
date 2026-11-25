@@ -34,6 +34,8 @@ def version_out(row: dict) -> dict:
         "source_file_id": row["source_file_id"],
         "source_format": content.get("source_format"),
         "blocks": content.get("blocks", []),
+        # How a generated version was rendered: docx_in_place, pdf_in_place or template.
+        "render": content.get("render"),
         "findings": row["extraction_findings"],
         "layout_metadata": row["layout_metadata"],
         "created_at": row["created_at"],
@@ -45,6 +47,8 @@ def document_content(doc: ParsedDocument, structure: dict | None = None) -> dict
         "source_format": doc.source_format,
         "blocks": [b.model_dump() for b in doc.blocks],
         "structure": structure,
+        # Text PDFs whose block ids address the stored file can be edited in place.
+        "pdf_in_place": doc.source_format == "pdf" and doc.supports_in_place_edit,
     }
 
 

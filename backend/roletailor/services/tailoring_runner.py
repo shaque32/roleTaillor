@@ -24,7 +24,6 @@ from roletailor.services import audit, billing, files, rendering, resumes, users
 from roletailor.services.errors import AppError
 from roletailor.services.metrics_sink import DbMetricsSink
 from roletailor.services.sql import fetch_one, jsonb
-from roletailor.storage import DOCX_MEDIA_TYPE
 
 log = logging.getLogger(__name__)
 
@@ -127,6 +126,7 @@ def _run_pipeline(inputs: RunInputs, sink: DbMetricsSink, iteration: int,
         ),
         gateway=gateway,
         source_docx=inputs.base.docx,
+        source_pdf=inputs.base.pdf,
         cached_structure=ResumeStructure.model_validate(structure) if structure else None,
         cached_job=_cached_job(inputs.job),
         iteration=iteration,
@@ -220,7 +220,7 @@ def _insert_changes_and_validations(conn: Connection, workflow_id: UUID, generat
         )
 
 
-def _persist(org_id: str, inputs: RunInputs, result: TailoringResult, docx: bytes,
+def _persist(org_id: str, inputs: RunInputs, result: TailoringResult, output: rendering.Rendered,
              iteration: int, metric_ids: dict[str, UUID]) -> bool:
     workflow_id = inputs.workflow["id"]
     with db.tenant_tx(org_id) as conn:
@@ -233,17 +233,22 @@ def _persist(org_id: str, inputs: RunInputs, result: TailoringResult, docx: byte
         _cache_analysis(conn, inputs, result)
         base = inputs.base.version
         stored = files.store(
-            conn, org_id, docx, media_type=DOCX_MEDIA_TYPE,
-            filename=f"tailored-v{iteration}.docx", category="generated",
+            conn, org_id, output.data, media_type=output.media_type,
+            filename=f"tailored-v{iteration}{output.extension}", category="generated",
         )
+        blocks = rendering.edited_blocks(inputs.base.document, result.edits)
+        content = {
+            "source_format": inputs.base.document.source_format,
+            "blocks": [b.model_dump() for b in blocks],
+            "structure": result.structure.model_dump(),
+            "render": output.summary(),
+        }
+        if output.mode == "pdf_in_place":
+            # Later iterations edit this PDF in place only if its block ids re-read identically.
+            content[rendering.PDF_IN_PLACE_KEY] = rendering.pdf_addresses_blocks(output.data, blocks)
         child = resumes.insert_version(
             conn, base["resume_id"],
-            content={
-                "source_format": inputs.base.document.source_format,
-                "blocks": [b.model_dump() for b in rendering.edited_blocks(inputs.base.document,
-                                                                            result.edits)],
-                "structure": result.structure.model_dump(),
-            },
+            content=content,
             layout_metadata=base["layout_metadata"], findings=base["extraction_findings"],
             source_file_id=stored["id"], parent_version_id=base["id"],
         )
@@ -276,8 +281,8 @@ def run(org_id: str, workflow_id: str, iteration: int,
         return "skipped"
     sink = DbMetricsSink(org_id, workflow_id)
     result = _run_pipeline(inputs, sink, iteration, focus_block_ids)
-    docx = rendering.render_with_edits(inputs.base, result.edits, result.structure.model_dump())
-    if not _persist(org_id, inputs, result, docx, iteration, sink.metric_ids):
+    output = rendering.render_primary(inputs.base, result.edits, result.structure.model_dump())
+    if not _persist(org_id, inputs, result, output, iteration, sink.metric_ids):
         return "discarded"
     return "completed"
 
