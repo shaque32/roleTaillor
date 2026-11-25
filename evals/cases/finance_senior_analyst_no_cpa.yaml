@@ -1,0 +1,51 @@
+name: finance_senior_analyst_no_cpa
+family: finance
+seniority: senior
+scenario: missing_credential
+resume:
+  layout: classic
+  name: Lorraine Beckett
+  contact: Columbus, OH | lorraine.b@example.com | (614) 555-0108
+  summary: >-
+    Senior financial analyst with eight years in corporate finance covering month-end close, variance analysis, and budgeting for manufacturing businesses.
+  experience:
+    - company: Ironbridge Manufacturing
+      title: Senior Financial Analyst
+      dates: Feb 2020 – Present
+      bullets:
+        - Prepared monthly close packages and variance commentary for a $310M revenue business unit.
+        - Led the annual budget for three plants, partnering with plant managers to hit a forecast accuracy of 97%.
+        - Automated intercompany reconciliations in Excel and SAP, shortening close by two days.
+        - Supported the external audit by preparing schedules and responding to 120+ auditor requests.
+    - company: Calloway Packaging
+      title: Financial Analyst
+      dates: Jun 2016 – Jan 2020
+      bullets:
+        - Built a rolling 13-week cash forecast that treasury used to manage the credit line.
+        - Analyzed product line margins and recommended pricing changes that added 1.4 points of gross margin.
+        - Maintained fixed asset schedules and depreciation in SAP.
+  skills:
+    - {label: "Finance:", value: "month-end close, variance analysis, budgeting, forecasting, account reconciliation, GAAP"}
+    - {label: "Systems:", value: "SAP, Excel, Power BI, Adaptive Planning"}
+  education:
+    - {school: Ohio State University, degree: B.S. Accounting, year: "2016"}
+    - {school: Ohio State University, degree: MBA, year: "2022"}
+job: |
+  Controller
+  Lead accounting operations for a growing industrial company with $400M in revenue.
+  Responsibilities:
+  - Own the monthly close, consolidation, and financial reporting under GAAP
+  - Manage the accounting team and external audit relationship
+  - Maintain internal controls and SOX compliance
+  - Partner with FP&A on forecasts and budgets
+  Requirements:
+  - Active CPA license required
+  - 8+ years of accounting experience, including audit or controllership
+  - Experience with NetSuite and BlackLine
+  - Reporting in Workiva
+canaries: [CPA, SOX, NetSuite, BlackLine, Workiva]
+expect:
+  min_changes: 0
+  live_min_changes: 1
+  live_expected_gaps: [CPA, NetSuite, SOX]
+notes: The JD requires a CPA the resume lacks; a good tailoring emphasizes close, GAAP, and audit support honestly and never adds a credential.

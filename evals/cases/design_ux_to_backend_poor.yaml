@@ -1,0 +1,50 @@
+name: design_ux_to_backend_poor
+family: design
+seniority: mid
+scenario: poor_match
+resume:
+  layout: classic
+  name: Imogen Castellanos
+  contact: Los Angeles, CA | imogen.c@example.com | (323) 555-0151
+  summary: >-
+    UX designer with five years of experience in research-led product design for consumer mobile apps.
+  experience:
+    - company: Sunbeam Wellness
+      title: UX Designer
+      dates: Sep 2021 – Present
+      bullets:
+        - Redesigned the meditation player in Figma after 18 moderated usability sessions, raising weekly retention by 9%.
+        - Built and maintained a component library of 140 components shared with iOS and Android developers.
+        - Ran diary studies and surveys with 200 users to shape the onboarding journey.
+        - Facilitated design critiques and workshops with product and engineering.
+    - company: Parcel Dash
+      title: Product Designer
+      dates: Jun 2019 – Aug 2021
+      bullets:
+        - Designed the driver app tracking flow and tested prototypes with 12 couriers.
+        - Created journey maps and personas that guided the 2020 roadmap.
+        - Documented design specs and accessibility annotations for handoff.
+  skills:
+    - {label: "Design:", value: "Figma, prototyping, user research, usability testing, journey mapping, accessibility"}
+    - {label: "Collaboration:", value: "design systems, workshops, handoff, Notion"}
+  education:
+    - {school: ArtCenter College of Design, degree: B.F.A. Interaction Design, year: "2019"}
+job: |
+  Backend Engineer, Data Platform
+  Build and operate the services that ingest and serve billions of events a day.
+  Responsibilities:
+  - Design and build high-throughput services in Java
+  - Operate event pipelines on Kafka
+  - Deploy and scale workloads on Kubernetes using Terraform
+  - Define gRPC APIs and own service reliability
+  Requirements:
+  - 4+ years of backend engineering experience
+  - Strong Java and distributed systems fundamentals
+  - Experience with Kafka, Kubernetes, and Terraform
+  - Experience with gRPC
+canaries: [Java, Kafka, Kubernetes, Terraform, gRPC, distributed systems]
+expect:
+  min_changes: 0
+  live_max_changes: 2
+  live_expected_gaps: [Java, Kafka, Kubernetes]
+notes: Wrong field entirely; the right answer is very few edits and honest gaps, with no backend skills invented for a designer.

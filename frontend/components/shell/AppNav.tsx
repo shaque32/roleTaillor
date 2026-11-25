@@ -2,24 +2,31 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
-import { LogOut, Menu, Plus, X } from "lucide-react";
+import { Briefcase, FileCheck2, FileText, LogOut, Plus, Settings, type LucideIcon } from "lucide-react";
 import { auth } from "@/lib/api";
 import { cx } from "@/lib/format";
-import { buttonClass } from "@/components/ui/Button";
+import { Button, IconButton, buttonClass } from "@/components/ui/Button";
+import { focusRing } from "@/components/ui/styles";
 import { Logo } from "./Logo";
 
 const LINKS = [
-  { href: "/dashboard", label: "Dashboard" },
+  { href: "/dashboard", label: "Tailored resumes" },
   { href: "/resumes", label: "Resumes" },
   { href: "/applications", label: "Applications" },
   { href: "/settings", label: "Settings" },
 ];
 
+const TABS: { href: string; label: string; icon: LucideIcon; primary?: boolean }[] = [
+  { href: "/dashboard", label: "Tailored", icon: FileCheck2 },
+  { href: "/resumes", label: "Resumes", icon: FileText },
+  { href: "/tailor/new", label: "New", icon: Plus, primary: true },
+  { href: "/applications", label: "Tracker", icon: Briefcase },
+  { href: "/settings", label: "Settings", icon: Settings },
+];
+
 export function AppNav() {
   const pathname = usePathname();
   const router = useRouter();
-  const [open, setOpen] = useState(false);
 
   async function logout() {
     try {
@@ -33,68 +40,81 @@ export function AppNav() {
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
   return (
-    <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
-      <nav className="mx-auto flex h-14 max-w-6xl items-center gap-6 px-4 sm:px-6" aria-label="Main">
-        <Logo />
-        <ul className="hidden items-center gap-1 md:flex">
-          {LINKS.map((l) => (
-            <li key={l.href}>
-              <Link
-                href={l.href}
-                aria-current={isActive(l.href) ? "page" : undefined}
-                className={cx(
-                  "rounded-md px-3 py-1.5 text-sm",
-                  isActive(l.href) ? "bg-slate-100 font-medium text-ink" : "text-ink-muted hover:text-ink",
-                )}
-              >
-                {l.label}
-              </Link>
-            </li>
-          ))}
-        </ul>
-        <div className="ml-auto flex items-center gap-2">
-          <Link href="/tailor/new" className={buttonClass("primary", "sm")}>
-            <Plus className="h-4 w-4" aria-hidden />
-            <span className="hidden sm:inline">New tailoring</span>
-            <span className="sm:hidden">New</span>
-          </Link>
-          <button onClick={logout} className={cx(buttonClass("ghost", "sm"), "hidden md:inline-flex")} aria-label="Sign out">
-            <LogOut className="h-4 w-4" aria-hidden />
-          </button>
-          <button
-            className={cx(buttonClass("ghost", "sm"), "md:hidden")}
-            aria-expanded={open}
-            aria-controls="mobile-nav"
-            aria-label={open ? "Close menu" : "Open menu"}
-            onClick={() => setOpen((o) => !o)}
-          >
-            {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-          </button>
+    <>
+      <header className="sticky top-0 z-40 border-b border-line bg-white/90 backdrop-blur">
+        <div className="mx-auto flex h-16 max-w-5xl items-center gap-6 px-4 sm:px-6">
+          <Logo />
+          <nav aria-label="Main" className="hidden md:block">
+            <ul className="flex items-center gap-1">
+              {LINKS.map((l) => (
+                <li key={l.href}>
+                  <Link
+                    href={l.href}
+                    aria-current={isActive(l.href) ? "page" : undefined}
+                    className={cx(
+                      "rounded-lg px-3 py-2 text-sm transition-colors",
+                      isActive(l.href) ? "bg-brand-50 font-medium text-brand-700" : "text-ink-muted hover:bg-surface-sunken hover:text-ink",
+                      focusRing,
+                    )}
+                  >
+                    {l.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </nav>
+          <div className="ml-auto flex items-center gap-2">
+            <Link href="/tailor/new" className={cx(buttonClass("primary", "md"), "hidden md:inline-flex")}>
+              <Plus className="h-4 w-4" aria-hidden />
+              New tailoring
+            </Link>
+            <Button variant="ghost" onClick={logout} className="hidden lg:inline-flex">
+              <LogOut className="h-4 w-4" aria-hidden />
+              Sign out
+            </Button>
+            <IconButton label="Sign out" onClick={logout} className="lg:hidden">
+              <LogOut className="h-5 w-5" aria-hidden />
+            </IconButton>
+          </div>
         </div>
-      </nav>
-      {open && (
-        <div id="mobile-nav" className="border-t border-slate-100 px-4 pb-3 md:hidden">
-          <ul className="space-y-1 pt-2">
-            {LINKS.map((l) => (
-              <li key={l.href}>
+      </header>
+
+      <nav
+        aria-label="Main, mobile"
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-white pb-[env(safe-area-inset-bottom)] md:hidden"
+      >
+        <ul className="grid grid-cols-5">
+          {TABS.map((t) => {
+            const active = isActive(t.href);
+            return (
+              <li key={t.href}>
                 <Link
-                  href={l.href}
-                  onClick={() => setOpen(false)}
-                  aria-current={isActive(l.href) ? "page" : undefined}
-                  className={cx("block rounded-md px-3 py-2 text-sm", isActive(l.href) ? "bg-slate-100 font-medium" : "text-ink-muted")}
+                  href={t.href}
+                  aria-current={active ? "page" : undefined}
+                  className={cx(
+                    "flex h-14 flex-col items-center justify-center gap-0.5 text-xs",
+                    active ? "text-brand-700" : "text-ink-muted",
+                    focusRing,
+                    "focus-visible:ring-inset focus-visible:ring-offset-0",
+                  )}
                 >
-                  {l.label}
+                  {t.primary ? (
+                    <span className="grid h-11 w-11 place-items-center rounded-full bg-brand-600 text-white shadow-card">
+                      <t.icon className="h-5 w-5" aria-hidden />
+                      <span className="sr-only">{t.label}</span>
+                    </span>
+                  ) : (
+                    <>
+                      <t.icon className="h-5 w-5" aria-hidden />
+                      {t.label}
+                    </>
+                  )}
                 </Link>
               </li>
-            ))}
-            <li>
-              <button onClick={logout} className="block w-full rounded-md px-3 py-2 text-left text-sm text-ink-muted">
-                Sign out
-              </button>
-            </li>
-          </ul>
-        </div>
-      )}
-    </header>
+            );
+          })}
+        </ul>
+      </nav>
+    </>
   );
 }

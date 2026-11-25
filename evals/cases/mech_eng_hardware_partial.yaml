@@ -1,0 +1,48 @@
+name: mech_eng_hardware_partial
+family: engineering_other
+seniority: senior
+scenario: partial_match
+resume:
+  layout: classic
+  name: Gunnar Eriksen-Walsh
+  contact: Minneapolis, MN | gunnar.ew@example.com | (763) 555-0188
+  summary: >-
+    Mechanical engineer with nine years of experience designing enclosures and mechanisms for
+    consumer and medical devices, from concept through production release.
+  experience:
+    - company: Lumenar Devices
+      title: Senior Mechanical Engineer
+      dates: Sep 2020 – Present
+      bullets:
+        - Designed the housing and hinge for a handheld diagnostic device in SolidWorks, shipped at 40,000 units.
+        - Ran FEA in ANSYS to cut wall thickness by 0.4 mm, saving $0.38 per unit.
+        - Applied GD&T to 90 part drawings and tightened a critical fit to a 0.05 mm tolerance.
+        - Led design reviews with suppliers and closed 35 engineering change orders.
+    - company: Kestrel Outdoor
+      title: Mechanical Engineer
+      dates: Jun 2016 – Aug 2020
+      bullets:
+        - Developed a folding stove mechanism through 12 prototype iterations using 3D printing and CNC.
+        - Ran drop and thermal tests, documenting results for a 15-page validation report.
+        - Maintained the bill of materials for 220 parts in a PLM system.
+  skills:
+    - {label: "CAD and analysis:", value: "SolidWorks, ANSYS, FEA, GD&T"}
+    - {label: "Prototyping:", value: "3D printing, CNC machining, test fixtures"}
+  education:
+    - {school: Michigan Technological University, degree: B.S. Mechanical Engineering, year: "2016"}
+job: |
+  Hardware Product Engineer
+  Own mechanical design for our next consumer hardware line.
+  Requirements:
+  - 6+ years of mechanical design with SolidWorks
+  - FEA and tolerance analysis using GD&T
+  - Design for manufacturability (DFM) for injection molding
+  - Python for test automation and data analysis
+  - Experience with Minitab or similar statistical tools
+  - Comfort working directly with contract manufacturers
+canaries: [Python, DFM, injection molding, Minitab]
+expect:
+  min_changes: 0
+  live_min_changes: 1
+  live_expected_gaps: [Python, injection molding]
+notes: SolidWorks, FEA, and GD&T line up directly; supplier work can be stressed, but Python, DFM, and injection molding are gaps that must not be claimed.

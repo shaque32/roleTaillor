@@ -1,0 +1,61 @@
+name: data_ai_cdao_executive_partial
+family: data_ai
+seniority: executive
+scenario: partial_match
+resume:
+  layout: classic
+  name: Marcus Eldridge-Okafor
+  contact: Chicago, IL | marcus.eo@example.org | (312) 555-0129
+  summary: >-
+    VP of Data and AI with fifteen years leading analytics, ML platform, and governance teams in
+    insurance. Known for pairing disciplined budget ownership with responsible, explainable AI.
+  experience:
+    - company: Meridian Mutual Insurance
+      title: VP, Data and AI
+      dates: Jan 2020 – Present
+      bullets:
+        - Lead 85 data scientists, ML engineers, and governance analysts and own a $22M annual budget across platform, vendors, and people.
+        - Stood up an MLOps program with model registry, monitoring, and release gates that took 14 models to production in two years.
+        - Created the data governance council and policies for lineage, ownership, and quality, covering 1,100 critical data elements.
+        - Introduced explainable AI standards for underwriting models, which regulators accepted without findings in two exams.
+    - company: Lakeshore Financial
+      title: Senior Director, Advanced Analytics
+      dates: Aug 2015 – Dec 2019
+      bullets:
+        - Grew the analytics group from 12 to 40 and set the hiring bar, career ladder, and quarterly planning cadence.
+        - Delivered a claims fraud ML model that identified $9.5M in avoided losses in its first year.
+        - Negotiated platform and consulting contracts, reducing annual vendor spend by 18%.
+    - company: Summit Risk Partners
+      title: Director of Analytics
+      dates: Mar 2010 – Jul 2015
+      bullets:
+        - Built pricing and retention models used across four lines of business.
+        - Reported analytics results and roadmap to the executive committee each quarter.
+  skills:
+    - {label: "Leadership:", value: "data strategy, budget ownership, vendor management, change management"}
+    - {label: "Technical depth:", value: "MLOps, data governance, explainable AI, ML, model risk management"}
+  education:
+    - {school: Northwestern University, degree: M.S. Analytics, year: "2010"}
+    - {school: University of Illinois Urbana-Champaign, degree: B.S. Mathematics, year: "2007"}
+job: |
+  Chief Data & AI Officer
+  We are a global consumer bank seeking an enterprise leader to set and execute our data and AI strategy.
+  You will report to the CEO and present to the board each quarter.
+  Responsibilities:
+  - Define the enterprise data and AI strategy and own the multi-year budget
+  - Lead data governance, MLOps, and responsible AI at scale
+  - Ensure explainable AI practices for credit and risk models
+  - Partner with regulators and the Chief Risk Officer on model oversight
+  Requirements:
+  - 15+ years in data, analytics, or AI leadership
+  - Experience with machine learning in regulated industries
+  - Alignment of programs to the NIST AI RMF and the EU AI Act
+  - Cloud data platforms such as Snowflake or Databricks
+  - M&A data integration experience
+  - Board reporting experience
+canaries: [NIST AI RMF, EU AI Act, Snowflake, Databricks, M&A data integration, Board reporting]
+expect:
+  min_changes: 0
+  live_min_changes: 1
+  live_expected_gaps: [NIST AI RMF, EU AI Act]
+notes: ML -> machine learning is a fair alignment and governance/MLOps/budget evidence is strong; regulatory frameworks, platforms, and M&A are honest gaps and must not be claimed.

@@ -49,15 +49,16 @@ Cloud deployment (Fly.io, Tigris storage, managed Postgres, CI/CD) is described 
 
 ## Test and evaluate
 ```bash
-cd backend && pytest                    # 117 tests; platform tests need local Postgres
-python ../evals/run_evals.py --render   # offline eval: fabrication, coverage, cost per stage
-python ../evals/run_evals.py --live --yes                        # real models (costs cents)
-python ../evals/run_evals.py --live --yes --stage-tier plan=low  # measure the cheaper config
+make setup             # once: backend/.venv with dev dependencies
+make test              # pytest; platform tests need local Postgres
+make eval-gate         # offline eval (35 cases) compared with the committed baseline; same as CI
+make eval-live-quick   # 5 cases on real models, about $0.25
+make eval-live         # all cases, planning on Sonnet vs Haiku, with an LLM judge; about $3
 ```
-The eval fails any case where a canary term (a job keyword the resume does not have) or a new number appears in the output.
+Any canary term (a job requirement the resume does not show) or new number in the output fails the case. See `evals/README.md` for the case set, metrics, thresholds, and the CI gate.
 
 ## Changing models or prompts
-- To change a model or a stage's tier, edit `config/models.yaml`, then run the live eval before and after.
+- To change a model or a stage's tier, edit `config/models.yaml`, run `make eval-live`, and commit `evals/results/live_summary.json` with the change. CI blocks prompt, model, and validation changes without a live summary from the same code.
 - To change a prompt, add `backend/roletailor/ai/prompts/<stage>.v<N+1>.md`. Never edit a shipped version. To roll back, pin the previous version under `prompt_pins`.
 - Each model call writes one `ai_metrics` row with the model, prompt version, routing reason, tokens, cost and latency.
 - Dashboards and alerts on cost, latency, errors and fabrication attempts: see `docs/monitoring.md` and `docs/runbooks/ai-alerts.md`.

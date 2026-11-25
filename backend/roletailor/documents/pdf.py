@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import subprocess
@@ -12,19 +13,15 @@ from pathlib import Path
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 
-from ._analysis import (
-    looks_like_heading,
-    missing_section_findings,
-    strip_bullet,
-)
-from .errors import InvalidDocument, PdfConversionError
+from . import ocr
+from ._analysis import looks_like_heading, missing_section_findings, strip_bullet
+from .errors import InvalidDocument, OcrError, PdfConversionError
 from .model import Block, ParsedDocument
+from .pdf_layout import continues, paragraph_is_heading, pdf_paragraphs
+
+log = logging.getLogger(__name__)
 
 POINTS_PER_INCH = 72
-# A line at least this fraction of the page's longest line is treated as wrapped prose.
-_FULL_LINE_RATIO = 0.8
-_CONTINUATION_ENDINGS = (",", ";", "-", "–", "/", "&", "(")
-_SENTENCE_ENDINGS = (".", "!", "?", ":")
 
 
 def soffice_path() -> str | None:
@@ -81,73 +78,94 @@ def count_pdf_pages(pdf: bytes) -> int:
 def read_pdf_text(data: bytes) -> ParsedDocument:
     """Extract text lines from a PDF as `text_line` blocks (`l0`, `l1`, ...).
 
-    Visually wrapped lines are merged back into one block when the break looks like a
-    wrap rather than a new item (see `_continues`). Bullet glyphs are stripped and
-    recorded as `is_list_item`. PDFs are never edited in place.
+    Lines come from the geometric reader (`pdf_layout`), so block ids are the same ones the
+    in-place writer (`pdf_writer`) uses. Visually wrapped lines are merged back into one block
+    when the break looks like a wrap rather than a new item. Bullet glyphs are stripped and
+    recorded as `is_list_item`. PDFs with text can be edited in place; scanned ones need OCR.
     """
     reader = _reader(data)
-    paragraphs: list[tuple[str, bool]] = []
-    for page in reader.pages:
-        paragraphs.extend(_merge_lines(_page_lines(page.extract_text() or "")))
+    paragraphs = pdf_paragraphs(data)
+    blocks = [
+        Block(
+            id=p.id, kind="text_line", text=p.text, is_list_item=p.is_list_item,
+            is_heading=paragraph_is_heading(p))
+        for p in paragraphs
+    ]
 
-    blocks = []
-    for n, (text, is_list) in enumerate(paragraphs):
-        blocks.append(Block(
-            id=f"l{n}",
-            kind="text_line",
-            text=text,
-            is_list_item=is_list,
-            is_heading=not is_list and looks_like_heading(
-                text, all_bold=False, allow_caps_only=n > 0),
-        ))
-
-    findings: list[dict] = []
     if not blocks:
-        findings.append({"code": "scanned_pdf_needs_ocr", "detail": (
-            "No extractable text; the PDF looks scanned and needs OCR")})
-    else:
-        findings.extend(missing_section_findings(blocks))
+        return _read_scanned(data, reader)
     return ParsedDocument(
         source_format="pdf",
         blocks=blocks,
         layout_metadata=_pdf_layout(reader, len(blocks)),
-        findings=findings,
+        findings=missing_section_findings(blocks),
+        supports_in_place_edit=True,
+    )
+
+
+def _read_scanned(data: bytes, reader: PdfReader) -> ParsedDocument:
+    """A PDF with no text layer: read it with OCR when Tesseract is available.
+
+    OCR'd blocks have no reusable fonts or exact geometry, so they are never edited in
+    place; the tailored resume is rendered through the ATS template. Without OCR (binary
+    missing, too many pages, or a Tesseract failure) the upload keeps the
+    `scanned_pdf_needs_ocr` finding and no blocks.
+    """
+    blocks: list[Block] = []
+    findings: list[dict] = []
+    if reader.pages and ocr.ocr_available():
+        try:
+            pages = ocr.ocr_pdf_pages(data)
+        except (OcrError, InvalidDocument) as exc:
+            log.warning("OCR failed, leaving the PDF unread: %s", exc)
+        else:
+            blocks = _ocr_blocks(pages)
+            if blocks:
+                findings = [*ocr.ocr_findings(pages), *missing_section_findings(blocks)]
+    if not blocks:
+        findings = [{"code": "scanned_pdf_needs_ocr", "detail": (
+            "No extractable text; the PDF looks scanned and needs OCR")}]
+    layout = _pdf_layout(reader, len(blocks))
+    if blocks:
+        layout["ocr"] = True
+    return ParsedDocument(
+        source_format="pdf", blocks=blocks, layout_metadata=layout, findings=findings,
         supports_in_place_edit=False,
     )
 
 
-def _page_lines(text: str) -> list[str]:
-    return [" ".join(line.split()) for line in text.splitlines()]
+def merge_text_lines(lines: list[str]) -> list[tuple[str, bool]]:
+    """Group one page's plain text lines into (text, is_list_item) paragraphs.
 
-
-def _continues(previous: str, line: str, full_width: int) -> bool:
-    """Whether `line` is a visual wrap of `previous` rather than a new paragraph."""
-    if not line or strip_bullet(line)[1] or looks_like_heading(line, all_bold=False):
-        return False
-    if previous.endswith(_CONTINUATION_ENDINGS) or line[0].islower():
-        return True
-    return len(previous) >= _FULL_LINE_RATIO * full_width and not previous.endswith(
-        _SENTENCE_ENDINGS)
-
-
-def _merge_lines(lines: list[str]) -> list[tuple[str, bool]]:
-    """Group a page's lines into (text, is_list_item) paragraphs; blank lines split."""
+    The text-only counterpart of `pdf_layout.merge_lines` for OCR output, which has no
+    reliable geometry: blank lines split paragraphs and wrapped lines are merged.
+    """
     full_width = max((len(line) for line in lines), default=0)
     merged: list[tuple[str, bool]] = []
-    previous_raw = ""
+    previous = ""
     for line in lines:
         if not line:
-            previous_raw = ""
+            previous = ""
             continue
-        if previous_raw and merged and not looks_like_heading(merged[-1][0], all_bold=False) \
-                and _continues(previous_raw, line, full_width):
+        if previous and merged and not looks_like_heading(merged[-1][0], all_bold=False) \
+                and continues(previous, line, full_width):
             text, is_list = merged[-1]
             merged[-1] = (f"{text} {line}", is_list)
         else:
-            text, is_list = strip_bullet(line)
-            merged.append((text, is_list))
-        previous_raw = line
+            merged.append(strip_bullet(line))
+        previous = line
     return merged
+
+
+def _ocr_blocks(pages: list[ocr.OcrPage]) -> list[Block]:
+    paragraphs = [p for page in pages for p in merge_text_lines(page.lines)]
+    return [
+        Block(
+            id=f"l{n}", kind="text_line", text=text, is_list_item=is_list,
+            is_heading=not is_list and looks_like_heading(text, all_bold=False, allow_caps_only=n > 0),
+        )
+        for n, (text, is_list) in enumerate(paragraphs)
+    ]
 
 
 def _pdf_layout(reader: PdfReader, block_count: int) -> dict:

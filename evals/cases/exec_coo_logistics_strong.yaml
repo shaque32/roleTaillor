@@ -1,0 +1,48 @@
+name: exec_coo_logistics_strong
+family: executive
+seniority: executive
+scenario: strong_match
+resume:
+  layout: classic
+  name: Theodora Vasquez-Lindgren
+  contact: Memphis, TN | theodora.vl@example.com | (901) 555-0149
+  summary: >-
+    Chief Operating Officer of a regional third-party logistics company, with fifteen years of
+    experience running warehousing, transportation, and customer operations at scale.
+  experience:
+    - company: Riverbend Logistics
+      title: Chief Operating Officer
+      dates: Jan 2020 – Present
+      bullets:
+        - Run operations for 11 warehouses and 640 employees, handling $210M in annual revenue.
+        - Raised on-time delivery from 92% to 97% and cut cost per order by 14% through lean programmes.
+        - Led a warehouse management system rollout across all sites on time and $400,000 under budget.
+        - Built the annual operating plan and reports monthly results to the CEO and board.
+    - company: Delta Crossdock
+      title: VP of Operations
+      dates: Mar 2013 – Dec 2019
+      bullets:
+        - Managed 6 distribution centers and a team of 30 managers, growing volume by 70%.
+        - Negotiated carrier and 3PL partnerships that saved $3.2M a year.
+        - Introduced a safety programme that halved recordable incidents in two years.
+  skills:
+    - {label: "Leadership:", value: "P&L ownership, operating plans, lean operations, safety, labour planning"}
+    - {label: "Systems:", value: "Manhattan WMS, Excel, Power BI"}
+  education:
+    - {school: University of Memphis, degree: MBA, year: "2011"}
+job: |
+  Chief Operating Officer, Third-Party Logistics
+  Lead warehousing, transportation, and customer operations for a growing 3PL.
+  Requirements:
+  - 12+ years in logistics operations, with 5+ at executive level
+  - P&L ownership for a $150M+ business
+  - Lean and continuous improvement leadership, including Six Sigma
+  - Experience with Oracle NetSuite and Coupa
+  - Track record of safety and ISO 9001 compliance
+  - Regular reporting to the CEO and board
+canaries: [Six Sigma, Oracle NetSuite, Coupa, ISO 9001]
+expect:
+  min_changes: 0
+  live_min_changes: 1
+  live_expected_gaps: [Six Sigma, ISO 9001]
+notes: Strong same-industry fit; a good tailoring mirrors the JD's lean, P&L, safety, and board-reporting language while leaving out Six Sigma, NetSuite, Coupa, and ISO 9001.
