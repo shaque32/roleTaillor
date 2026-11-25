@@ -8,6 +8,7 @@ prompt_versions); tests and evals use `MemorySink`.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Protocol
 
 
@@ -31,6 +32,9 @@ class CallRecord:
     estimated_cost_usd: float = 0.0
     error_code: str | None = None
     trace_id: str | None = None
+    # When the call finished (timezone-aware UTC), captured by the Gateway before response
+    # validation or any sink delay. Persisted as ai_metrics.created_at.
+    completed_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 class MetricsSink(Protocol):

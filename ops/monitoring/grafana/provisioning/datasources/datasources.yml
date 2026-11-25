@@ -1,0 +1,27 @@
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+
+  # Read-only role rt_metrics on the roletailor_ops schema.
+  # sslmode is disabled for the local compose network only. In the cloud, use
+  # sslmode: verify-full (or require) and a managed Postgres CA, and point url at the real host.
+  - name: RoleTailor Postgres
+    type: grafana-postgresql-datasource
+    uid: roletailor-pg
+    access: proxy
+    url: postgres:5432
+    user: rt_metrics
+    editable: false
+    jsonData:
+      database: roletailor
+      sslmode: disable
+      postgresVersion: 1600
+      timescaledb: false
+    secureJsonData:
+      password: $RT_METRICS_DB_PASSWORD
