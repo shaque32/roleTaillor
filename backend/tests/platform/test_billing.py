@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 
 import pytest
@@ -282,6 +283,32 @@ def test_refund_before_settlement_grants_no_credit(client, exhausted_user):
     assert send(client, settled).json() == {"status": "processed"}
     assert user.get("/v1/billing/status").json()["pay_per_use_credits"] == 0
     assert count(user.org_id, "SELECT count(*) FROM payments WHERE status = 'refunded'") == 1
+
+
+def test_refund_racing_settlement_is_not_lost(client, exhausted_user):
+    """A settlement inserts the payment row while the refund is being handled: the
+    refund must wait for it and apply, not be dropped by the unique-key conflict."""
+    user = exhausted_user
+    intent = f"pi_{uuid.uuid4().hex}"
+    refund = stripe_event("charge.refunded", {
+        "id": "ch_race", "payment_intent": intent, "amount": 50, "amount_refunded": 50, "currency": "usd",
+        "customer": user.customer,
+    })
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        with db.tenant_tx(user.org_id) as conn:
+            # The settlement's insert, held open (uncommitted) while the refund arrives.
+            conn.execute(
+                text("INSERT INTO payments (organization_id, stripe_payment_intent_id, status, currency,"
+                     " amount_minor) VALUES (:org, :pi, 'succeeded', 'USD', 50)"),
+                {"org": user.org_id, "pi": intent},
+            )
+            pending = pool.submit(send, client, refund)
+            time.sleep(0.5)
+            assert not pending.done()  # blocked on the uncommitted row
+        assert pending.result(timeout=10).json() == {"status": "processed"}
+    assert user.get("/v1/billing/status").json()["pay_per_use_credits"] == 0
+    assert count(user.org_id, "SELECT count(*) FROM payments WHERE stripe_payment_intent_id = :pi"
+                 " AND status = 'refunded' AND refunded_minor = 50", pi=intent) == 1
 
 
 def test_canceled_subscription_not_reverted_by_late_event(client, exhausted_user):
