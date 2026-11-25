@@ -23,6 +23,14 @@ AS $$
     WHERE r.archived_at IS NOT NULL
       AND r.purged_at IS NULL
       AND r.archived_at < now() - GREATEST(p_older_than, interval '1 day')
+      -- A resume with a run in flight is left for a later night. Leaving it out here,
+      -- before the limit, keeps a backlog of busy resumes from filling every batch.
+      AND NOT EXISTS (
+          SELECT 1 FROM roletailor.tailoring_workflows w
+          JOIN roletailor.resume_versions v
+            ON v.organization_id = w.organization_id AND v.id = w.source_resume_version_id
+          WHERE v.organization_id = r.organization_id AND v.resume_id = r.id
+            AND w.status IN ('queued', 'running'))
     ORDER BY r.archived_at
     LIMIT GREATEST(p_limit, 0)
 $$;

@@ -182,7 +182,15 @@ def test_purge_waits_for_a_run_in_flight(make_user, classic_docx, stub_pipeline)
     with db.tenant_tx(org) as conn:
         conn.execute(text("UPDATE tailoring_workflows SET status = 'running' WHERE id = :id"), {"id": wid})
 
-    assert purge_only(org).skipped >= 1
+    # Busy resumes are not candidates at all, so they cannot crowd out a small batch.
+    with db.global_tx() as conn:
+        due = conn.execute(text(
+            "SELECT resume_id FROM roletailor.resumes_due_for_purge(interval '30 days', 100000)")).all()
+    assert rid not in {str(r[0]) for r in due}
+    # The locked check inside the purge still refuses it if it is offered anyway.
+    with db.tenant_tx(org) as conn:
+        assert retention._purge_resume(conn, org, rid, 30) is None
+    purge_only(org)
     assert scalar(org, "SELECT purged_at FROM resumes WHERE id = :id", id=rid) is None
     assert scalar(org, "SELECT count(*) FROM stored_files") >= 3
 
