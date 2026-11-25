@@ -21,6 +21,8 @@ COPY backend/roletailor backend/roletailor
 RUN pip install ./backend
 COPY config config
 COPY db db
+# Read access for the non-root user regardless of the host's file modes or umask.
+RUN chmod -R a+rX /app
 
 ENV RT_MODELS_CONFIG_PATH=/app/config/models.yaml \
     RT_STORAGE_LOCAL_DIR=/data/files \

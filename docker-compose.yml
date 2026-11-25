@@ -9,7 +9,12 @@ x-backend: &backend
     RT_DATABASE_URL: postgresql+psycopg://rt_app:rt_app@postgres:5432/roletailor
     RT_MIGRATION_DATABASE_URL: postgresql://rt_owner:rt_owner@postgres:5432/roletailor
     RT_REDIS_URL: redis://redis:6379/0
+    # Container paths win over any local-dev values in .env (relative paths there
+    # would resolve inside /app, which the non-root app user cannot write).
+    RT_STORAGE_LOCAL_DIR: /data/files
+    RT_MODELS_CONFIG_PATH: /app/config/models.yaml
   volumes:
+    # Shared by api and worker: uploads, rendered resumes, exports.
     - files:/data/files
   depends_on:
     postgres:
@@ -53,7 +58,8 @@ services:
     <<: *backend
     ports: ["8000:8000"]
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
+      # Empty ProxyHandler: never route the local health probe through an HTTP proxy.
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.build_opener(u.ProxyHandler({})).open('http://127.0.0.1:8000/healthz', timeout=3)"]
       interval: 10s
       retries: 10
 
@@ -63,6 +69,8 @@ services:
     environment:
       RT_DATABASE_URL: postgresql+psycopg://rt_app:rt_app@postgres:5432/roletailor
       RT_REDIS_URL: redis://redis:6379/0
+      RT_STORAGE_LOCAL_DIR: /data/files
+      RT_MODELS_CONFIG_PATH: /app/config/models.yaml
       PROMETHEUS_MULTIPROC_DIR: /tmp/prometheus
     ports: ["9101:9101"]
 
