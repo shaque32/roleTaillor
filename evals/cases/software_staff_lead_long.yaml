@@ -1,0 +1,80 @@
+name: software_staff_lead_long
+family: software
+seniority: lead
+scenario: long_resume
+page_limit: 2
+resume:
+  layout: classic
+  name: Marguerite Delacroix-Hunt
+  contact: Seattle, WA | marguerite.dh@example.com | (206) 555-0176 | linkedin.com/in/mdhunt-example
+  summary: >-
+    Staff engineer with fourteen years of experience building high-volume Java services, leading
+    cross-team technical initiatives, and growing engineers into senior roles.
+  experience:
+    - company: Cascadia Freight Systems
+      title: Staff Software Engineer
+      dates: Jan 2022 – Present
+      bullets:
+        - Set the technical direction for the shipment-tracking platform used by 420 carriers.
+        - Led a team of nine engineers through a monolith split into eleven Java services on k8s.
+        - Cut deployment lead time from five days to four hours with a Jenkins-based pipeline.
+        - Wrote the incident review process adopted by all six engineering teams.
+        - Partnered with product on the 18-month roadmap and a $2.4M infrastructure budget.
+    - company: Northwind Retail Tech
+      title: Principal Engineer
+      dates: Feb 2019 – Dec 2021
+      bullets:
+        - Designed the order-routing engine that processed 85,000 orders per hour on Black Friday.
+        - Reduced MySQL replication lag from 40 seconds to under 2 seconds through schema and index changes.
+        - Ran weekly architecture reviews and mentored five senior engineers.
+        - Led a migration of 60 batch jobs to containers, saving $310,000 a year in hosting costs.
+        - Introduced contract testing between 14 services, ending a class of release-day outages.
+    - company: Bluebird Payments
+      title: Senior Software Engineer
+      dates: May 2015 – Jan 2019
+      bullets:
+        - Built the refund and chargeback service in Java and Spring, handling $9M in monthly volume.
+        - Added idempotency keys to the payment API, eliminating duplicate charges.
+        - Rewrote the reconciliation job, shortening nightly runs from six hours to 45 minutes.
+        - Interviewed 70 candidates and onboarded eight new hires.
+        - Documented the service runbooks used by the on-call rotation.
+    - company: Lakeshore Analytics
+      title: Software Engineer
+      dates: Jul 2011 – Apr 2015
+      bullets:
+        - Developed Java report-generation services used by 200 enterprise clients.
+        - Optimised slow SQL queries, cutting dashboard load times by 55%.
+        - Automated release packaging with shell scripts and Ant, saving two engineer-days per release.
+        - Fixed over 300 production defects in a legacy Struts application.
+        - Contributed to the migration of the data tier from Oracle to MySQL.
+    - company: Pioneer Software Group
+      title: Junior Developer
+      dates: Aug 2009 – Jun 2011
+      bullets:
+        - Maintained customer-facing web forms written in Java and JSP.
+        - Wrote regression tests covering 180 user scenarios.
+        - Triaged support tickets and shipped 40 small fixes in the first year.
+        - Pair-programmed with senior engineers on the licensing module.
+        - Wrote internal documentation for the build and deployment process.
+  skills:
+    - {label: "Languages:", value: "Java, SQL, Bash, JavaScript"}
+    - {label: "Platform:", value: "Spring, MySQL, Docker, k8s, AWS, Jenkins"}
+  education:
+    - {school: Oregon State University, degree: B.S. Computer Science, year: "2009"}
+job: |
+  Engineering Lead, Fulfillment Platform
+  You will lead a team of eight to ten engineers and own the services that move orders through our warehouses.
+  Requirements:
+  - 10+ years of software engineering, including 3+ leading teams
+  - Production experience with Kubernetes and AWS
+  - Event-driven architectures with Kafka
+  - Infrastructure as code with Terraform
+  - Observability with Datadog and Elasticsearch
+  - Experience preparing for SOC 2 audits
+  - Strong mentoring and hiring practice
+canaries: [Kafka, Terraform, Datadog, Elasticsearch, SOC 2]
+expect:
+  min_changes: 0
+  live_min_changes: 1
+  live_expected_gaps: [Kafka, Terraform]
+notes: Five full roles that already fill two pages; a good tailoring swaps k8s for Kubernetes and reorders emphasis without adding length or the missing tools.

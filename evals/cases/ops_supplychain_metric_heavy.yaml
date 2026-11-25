@@ -1,0 +1,56 @@
+name: ops_supplychain_metric_heavy
+family: operations
+seniority: senior
+scenario: metric_heavy
+resume:
+  layout: classic
+  name: Rafael Quintanilla
+  contact: Columbus, OH | rafael.quintanilla@example.com | (614) 555-0112
+  summary: >-
+    Supply chain manager with twelve years of experience in consumer goods planning,
+    procurement, and distribution, with a record of measurable cost and service gains.
+  experience:
+    - company: Harlow Home Products
+      title: Supply Chain Manager
+      dates: Mar 2020 – Present
+      bullets:
+        - Managed inventory of 14,200 SKUs across four distribution centers, lifting fill rate from 91% to 97.5%.
+        - Negotiated carrier contracts that saved $2.3M a year on $18M of freight spend.
+        - Cut excess inventory by 22%, freeing $4.1M of working capital.
+        - Led a team of 12 planners and buyers and reduced stockouts by 31% in 18 months.
+    - company: Greenfield Foods
+      title: Senior Demand Planner
+      dates: Jun 2016 – Feb 2020
+      bullets:
+        - Improved forecast accuracy from 68% to 84% across 3,100 SKUs using SAP and Excel models.
+        - Reduced spoilage by $640,000 a year through shorter replenishment cycles.
+        - Ran the monthly S&OP meeting with sales, finance, and 5 plant managers.
+    - company: Tristar Distribution
+      title: Logistics Analyst
+      dates: Aug 2012 – May 2016
+      bullets:
+        - Built Tableau dashboards tracking on-time delivery, which rose from 88% to 95%.
+        - Consolidated 9 regional routes into 6, saving 140,000 miles a year.
+  skills:
+    - {label: "Systems:", value: "SAP, Excel, Tableau"}
+    - {label: "Areas:", value: "Demand planning, S&OP, procurement, inventory optimisation, freight"}
+  education:
+    - {school: Ohio State University, degree: B.S. Logistics Management, year: "2012"}
+  certifications:
+    - APICS Certified in Planning and Inventory Management
+job: |
+  Director of Operations, Supply Chain
+  Lead planning, procurement, and distribution for a $400M consumer products business.
+  Requirements:
+  - 10+ years in supply chain, with 5+ years leading managers
+  - Planning platforms such as Kinaxis or Blue Yonder
+  - Six Sigma Black Belt or equivalent continuous improvement credential
+  - CPIM certification preferred
+  - Power BI reporting to the executive team
+  - Budget ownership and vendor management
+canaries: [Kinaxis, Blue Yonder, Six Sigma Black Belt, CPIM, Power BI]
+expect:
+  min_changes: 0
+  live_min_changes: 1
+  live_expected_gaps: [Kinaxis, Six Sigma Black Belt]
+notes: Every percentage, dollar figure, and SKU count must survive unchanged; a good tailoring highlights team leadership, vendor, and budget experience.

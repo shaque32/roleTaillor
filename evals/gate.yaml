@@ -1,0 +1,22 @@
+# Release thresholds for the eval gate (evals/gate.py). Change these deliberately and in
+# review; they are the bar a prompt or model change has to clear.
+
+offline:
+  # Compared against evals/results/offline_baseline.json (deterministic provider).
+  max_fabrications: 0
+  min_pass_rate: 1.0
+  # Estimated cost grows with prompt length, so this catches prompt bloat.
+  max_cost_increase_pct: 10
+  # Per-case accepted changes and coverage may not fall below the baseline.
+  allow_change_regressions: 0
+
+live:
+  # Checked against evals/results/live_summary.json for the production config.
+  max_fabrication_cases: 0
+  min_pass_rate: 0.85
+  max_mean_cost_usd: 0.05
+  max_p95_cost_usd: 0.08
+  min_expected_gap_recall: 0.8
+  min_judge_truthfulness: 4.5   # applies when the summary includes judge scores
+  max_judge_truthfulness_below_4: 1
+  max_summary_age_days: 45
