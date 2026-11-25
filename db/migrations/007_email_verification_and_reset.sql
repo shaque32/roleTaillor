@@ -1,4 +1,5 @@
 -- Email verification and password reset.
+-- Numbered 007 because 006 is taken by the resume retention migration (separate PR).
 -- users.email_verified_at records when the address was last proven (a clicked link).
 -- user_tokens holds the one-time tokens behind the emailed links. Only a SHA-256 hash of
 -- each token is stored, so a copy of this table cannot be used to verify an address or

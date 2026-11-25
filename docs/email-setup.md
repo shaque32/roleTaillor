@@ -72,7 +72,7 @@ if you do not want it to send real email.
   reset link, confirms the address (the link proved the inbox), writes an audit entry and
   sends a "password changed" notice.
 - **Links** are random 256-bit tokens with an HMAC, stored only as a SHA-256 hash
-  (`user_tokens`, migration 006), single use, and expiring. Asking for a new link cancels
+  (`user_tokens`, migration 007), single use, and expiring. Asking for a new link cancels
   the previous one. The token travels in the URL fragment, which browsers do not send to
   servers, so it stays out of access logs and Referer headers.
 - Rotating `RT_SECRET_KEY` invalidates links that were already mailed. Users ask for a new one.
