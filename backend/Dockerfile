@@ -28,12 +28,16 @@ COPY db db
 # Read access for the non-root user regardless of the host's file modes or umask.
 RUN chmod -R a+rX /app
 
-ENV RT_MODELS_CONFIG_PATH=/app/config/models.yaml \
+# The image is production unless told otherwise, so the config guard in
+# roletailor/config.py is on by default. Local compose sets RT_ENVIRONMENT=dev in .env.
+ENV RT_ENVIRONMENT=prod \
+    RT_MODELS_CONFIG_PATH=/app/config/models.yaml \
     RT_STORAGE_LOCAL_DIR=/data/files \
     HOME=/home/app
 RUN mkdir -p /data/files && chown -R app:app /data
 USER app
 
 EXPOSE 8000
-CMD ["uvicorn", "roletailor.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", \
-     "--proxy-headers", "--forwarded-allow-ips", "*"]
+# No --proxy-headers: X-Forwarded-For is client-controlled. The app reads the client
+# address itself (see api/deps.py: client_ip).
+CMD ["uvicorn", "roletailor.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]

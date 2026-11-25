@@ -1,14 +1,19 @@
 from __future__ import annotations
 
+import hmac
+import logging
+
 import redis
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
-from sqlalchemy import text
+from sqlalchemy import Connection, text
 
 from roletailor import db
 from roletailor.config import get_settings
+from roletailor.services.errors import not_found
 
+log = logging.getLogger(__name__)
 router = APIRouter(tags=["ops"])
 
 
@@ -23,6 +28,7 @@ def readyz() -> JSONResponse:
     try:
         with db.global_tx() as conn:
             conn.execute(text("SELECT 1"))
+            checks["tenant_isolation"] = _tenant_isolation(conn)
         checks["database"] = "ok"
     except Exception as exc:
         checks["database"] = f"error: {type(exc).__name__}"
@@ -36,6 +42,37 @@ def readyz() -> JSONResponse:
                         status_code=200 if ready else 503)
 
 
+_ROLE_SQL = text(
+    "SELECT r.rolsuper OR r.rolbypassrls AS bypasses,"
+    " EXISTS (SELECT 1 FROM pg_tables t WHERE t.schemaname = 'roletailor'"
+    "         AND pg_has_role(current_user, t.tableowner, 'USAGE')) AS owns_tables"
+    " FROM pg_roles r WHERE r.rolname = current_user"
+)
+
+
+def _tenant_isolation(conn: Connection) -> str:
+    """Row-level security only binds a role that is neither a superuser, BYPASSRLS, nor
+    the table owner (directly or through inherited membership of the owning role).
+    If RT_DATABASE_URL points at such a role every tenant can read every
+    other tenant's rows, so the instance must not take traffic. Checked on every probe:
+    role attributes and ownership can change while the process runs."""
+    row = conn.execute(_ROLE_SQL).mappings().first()
+    if row is None or row["bypasses"] or row["owns_tables"]:
+        log.critical("database role bypasses row-level security; refusing readiness")
+        return "error: database role bypasses row-level security"
+    return "ok"
+
+
 @router.get("/metrics", include_in_schema=False)
-def metrics() -> Response:
+def metrics(request: Request) -> Response:
+    settings = get_settings()
+    token = settings.metrics_token
+    authorized = bool(token) and hmac.compare_digest(
+        request.headers.get("authorization", "").encode(), f"Bearer {token}".encode())
+    if not authorized:
+        # A scraper on the private network reaches the process directly; anything that
+        # carries the edge's client-address header came from the internet.
+        from_edge = bool(settings.client_ip_header) and settings.client_ip_header in request.headers
+        if token or from_edge:
+            raise not_found("Page")
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)

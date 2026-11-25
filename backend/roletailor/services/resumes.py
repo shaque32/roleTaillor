@@ -66,6 +66,31 @@ def parse_document(data: bytes, media_type: str) -> ParsedDocument:
         ) from exc
 
 
+def parse_upload(data: bytes, media_type: str) -> ParsedDocument:
+    """Parse an untrusted upload in the resource-limited child process (documents.sandbox)."""
+    from roletailor.config import get_settings
+    from roletailor.documents import sandbox
+
+    settings = get_settings()
+    try:
+        return sandbox.parse_untrusted(
+            data, "docx" if media_type == DOCX_MEDIA_TYPE else "pdf",
+            timeout=settings.parse_timeout_seconds, memory_mb=settings.parse_memory_limit_mb,
+            cpu_seconds=settings.parse_cpu_seconds, max_pages=settings.max_resume_pdf_pages,
+            max_blocks=settings.max_resume_blocks,
+        )
+    except sandbox.DocumentRejected as exc:
+        raise AppError(422, "resume_too_large", str(exc)) from exc
+    except sandbox.ParserBusy as exc:
+        raise AppError(503, "parser_busy", "We are reading a lot of resumes right now. "
+                       "Try again in a moment.", {"retry_after": 15}) from exc
+    except Exception as exc:  # crashes, limits and unreadable files are user-facing, not faults
+        raise AppError(
+            422, "resume_unreadable",
+            "We could not read this file. Try another export of your resume.",
+        ) from exc
+
+
 # --------------------------------------------------------------------------
 # Repository helpers (callers own the transaction)
 # --------------------------------------------------------------------------
@@ -161,9 +186,13 @@ def _resume_name(name: str | None, fallback: str) -> str:
 def create_from_upload(
     principal: Principal, data: bytes, filename: str | None, name: str | None
 ) -> dict:
+    # Validate and parse first: no transaction is held while parsing, and a file we
+    # cannot read is never written to object storage.
+    media_type = files.sniff_upload(data)
+    doc = parse_upload(data, media_type)
     with db.tenant_tx(principal.org_id) as conn:
-        stored = files.store_upload(conn, principal.org_id, data, filename)
-        doc = parse_document(data, stored["media_type"])
+        stored = files.store(conn, principal.org_id, data, media_type=media_type,
+                             filename=filename, category="uploads")
         resume = _insert_resume(
             conn, principal, _resume_name(name, stored["original_filename"]), "upload"
         )

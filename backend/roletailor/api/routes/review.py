@@ -2,16 +2,17 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse, Response
 
-from roletailor.api.deps import CurrentPrincipal
+from roletailor.api.deps import CurrentPrincipal, rate_limited_by_user
 from roletailor.api.schemas import ChangeDecisionIn, ExportIn, ShareIn
 from roletailor.services import review
 from roletailor.services.errors import not_found
 from roletailor.storage import LocalStorage, get_storage
 
 router = APIRouter(tags=["review"])
+_EXPORT_LIMIT = [Depends(rate_limited_by_user("export", "rate_limit_export_per_minute"))]
 
 
 @router.patch("/generated/{generated_id}/changes/{change_id}")
@@ -25,12 +26,12 @@ def approve(generated_id: UUID, principal: CurrentPrincipal) -> dict:
     return review.approve(principal, generated_id)
 
 
-@router.post("/generated/{generated_id}/exports", status_code=201)
+@router.post("/generated/{generated_id}/exports", status_code=201, dependencies=_EXPORT_LIMIT)
 def create_export(generated_id: UUID, body: ExportIn, principal: CurrentPrincipal) -> dict:
     return review.create_export(principal, generated_id, body.kind)
 
 
-@router.post("/exports/{export_id}/share", status_code=201)
+@router.post("/exports/{export_id}/share", status_code=201, dependencies=_EXPORT_LIMIT)
 def share_export(export_id: UUID, body: ShareIn, principal: CurrentPrincipal) -> dict:
     return review.share(principal, export_id, body.expires_in_hours)
 

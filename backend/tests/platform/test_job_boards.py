@@ -17,6 +17,12 @@ LEVER_ID = "6ed76ce8-4156-4b60-b120-403538bd66cd"
 PUBLIC_IP = "93.184.216.34"
 
 
+def _logical_url(request: httpx.Request) -> str:
+    """The URL as the caller meant it. The fetcher connects to the vetted IP address and
+    carries the name in the Host header (DNS rebinding guard), so put the name back."""
+    return str(request.url.copy_with(host=request.headers["host"]))
+
+
 def fixture(name: str) -> str:
     return (FIXTURES / name).read_text(encoding="utf-8")
 
@@ -84,8 +90,8 @@ def _serve(monkeypatch, routes: dict[str, httpx.Response]):
     seen: list[str] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
-        seen.append(str(request.url))
-        return routes.get(str(request.url), httpx.Response(404, json={"error": "not found"}))
+        seen.append(_logical_url(request))
+        return routes.get(_logical_url(request), httpx.Response(404, json={"error": "not found"}))
 
     return httpx.MockTransport(handler), seen
 
@@ -226,8 +232,8 @@ def test_api_requests_keep_the_ssrf_guards(monkeypatch):
     seen: list[str] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
-        seen.append(str(request.url))
-        if str(request.url) == api:
+        seen.append(_logical_url(request))
+        if _logical_url(request) == api:
             return httpx.Response(302, headers={"location": "http://internal.example.com/latest/meta-data"})
         return httpx.Response(404)
 

@@ -53,7 +53,7 @@ def pause(workflow_id: UUID, principal: CurrentPrincipal) -> dict:
     return workflows.pause(principal, workflow_id)
 
 
-@router.post("/{workflow_id}/resume")
+@router.post("/{workflow_id}/resume", dependencies=[Depends(generation_rate_limit)])
 def resume(workflow_id: UUID, principal: AIPrincipal) -> dict:
     return workflows.resume(principal, workflow_id)
 

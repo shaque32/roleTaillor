@@ -1,5 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { SESSION_COOKIE, apiBaseUrl, errorResponse, isSameOrigin } from "@/lib/server-config";
+import {
+  MAX_PROXY_BODY_BYTES,
+  SESSION_COOKIE,
+  apiBaseUrl,
+  clientAddressHeaders,
+  errorResponse,
+  isSameOrigin,
+  readBodyLimited,
+} from "@/lib/server-config";
 import { clearSessionCookie } from "@/lib/session-cookie";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +39,14 @@ async function handle(req: NextRequest, ctx: { params: Promise<{ path: string[] 
   }
   if (!headers.has("x-correlation-id")) headers.set("x-correlation-id", crypto.randomUUID());
   headers.set("Authorization", `Bearer ${token}`);
+  for (const [name, value] of Object.entries(clientAddressHeaders(req))) headers.set(name, value);
+
+  let requestBody: ArrayBuffer | undefined;
+  if (!SAFE_METHODS.has(req.method)) {
+    const read = await readBodyLimited(req, MAX_PROXY_BODY_BYTES);
+    if (read === null) return errorResponse(413, "payload_too_large", "That request is too large.");
+    requestBody = read;
+  }
 
   const target = `${apiBaseUrl()}/${path.map(encodeURIComponent).join("/")}${req.nextUrl.search}`;
   let upstream: Response;
@@ -38,7 +54,7 @@ async function handle(req: NextRequest, ctx: { params: Promise<{ path: string[] 
     upstream = await fetch(target, {
       method: req.method,
       headers,
-      body: SAFE_METHODS.has(req.method) ? undefined : await req.arrayBuffer(),
+      body: requestBody,
       cache: "no-store",
       redirect: "manual",
     });

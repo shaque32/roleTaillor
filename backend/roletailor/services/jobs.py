@@ -37,6 +37,7 @@ def create_job(
             fetched = job_fetch.fetch_job_page(
                 source_url, timeout=settings.job_fetch_timeout_seconds,
                 max_bytes=settings.job_fetch_max_bytes,
+                total_seconds=settings.job_fetch_total_seconds,
                 board_max_bytes=settings.job_fetch_board_max_bytes,
             )
         except job_fetch.JobFetchError as exc:

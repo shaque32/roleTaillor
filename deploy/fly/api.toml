@@ -15,19 +15,23 @@ primary_region = "iad"
   strategy = "rolling"
 
 [processes]
-  app = "uvicorn roletailor.main:create_app --factory --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips *"
+  # No --proxy-headers: X-Forwarded-For is client-controlled. See RT_CLIENT_IP_HEADER below.
+  app = "uvicorn roletailor.main:create_app --factory --host 0.0.0.0 --port 8000"
   # PROMETHEUS_MULTIPROC_DIR is set only for the worker (as in docker-compose): if the API
   # saw it, prometheus_client would switch to multiprocess mode and /metrics would break.
   worker = "sh -c 'export PROMETHEUS_MULTIPROC_DIR=/tmp/prometheus && mkdir -p $PROMETHEUS_MULTIPROC_DIR && exec celery -A roletailor.worker.celery_app worker --loglevel=INFO --concurrency=2'"
 
 # Non-secret, environment-neutral values. Per-environment values live in env/*.api.env.
 # Secrets (set with `fly secrets set`): RT_DATABASE_URL, RT_MIGRATION_DATABASE_URL, RT_REDIS_URL,
-# RT_SECRET_KEY, ANTHROPIC_API_KEY, DEEPSEEK_API_KEY, RT_STRIPE_*, AWS_* (Tigris).
+# RT_SECRET_KEY, RT_PROXY_SHARED_SECRET (same value as the web app's API_PROXY_SECRET), ANTHROPIC_API_KEY, DEEPSEEK_API_KEY, RT_STRIPE_*, AWS_* (Tigris).
 [env]
   RT_STORAGE_BACKEND = "s3"
   RT_S3_ENDPOINT_URL = "https://fly.storage.tigris.dev"
   RT_S3_REGION = "auto"
   RT_LLM_MODE = "live"
+  # The Fly edge sets this header itself on every public request. Rate limits key on it,
+  # and /metrics is hidden from requests that carry it (only private scrapes get through).
+  RT_CLIENT_IP_HEADER = "Fly-Client-IP"
   RT_LOG_LEVEL = "INFO"
   RT_WORKER_METRICS_PORT = "9101"
 

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+import time
+
 import httpx
 import pytest
 
@@ -194,3 +197,121 @@ def test_paste_resume_workflow_and_export(make_user, client, monkeypatch):
     download = client.get(export.json()["download_url"].removeprefix("http://localhost:8000"))
     assert download.status_code == 200
     assert any("Kafka" in b.text for b in read_docx(download.content).blocks)
+
+
+def test_fetch_connects_to_the_vetted_address_only(monkeypatch):
+    """DNS rebinding: the name answers publicly for the check, privately afterwards. The
+    request must go to the address that was checked, with one lookup per hop."""
+    answers = iter(["93.184.216.34", "127.0.0.1", "127.0.0.1"])
+    lookups = []
+
+    def resolve(host, port):
+        lookups.append(host)
+        return [next(answers)]
+
+    monkeypatch.setattr(job_fetch, "_resolve", resolve)
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.url.host, request.headers["host"], request.extensions.get("sni_hostname")))
+        return httpx.Response(200, text=f"<html><body><main><p>{LONG}</p></main></body></html>",
+                              headers={"content-type": "text/html"})
+
+    job_fetch.fetch_job_page("https://rebind.example.com/job", timeout=1, max_bytes=100_000,
+                             transport=httpx.MockTransport(handler))
+    assert lookups == ["rebind.example.com"]
+    assert seen == [("93.184.216.34", "rebind.example.com", "rebind.example.com")]
+
+
+@pytest.mark.parametrize("url", ["http://jobs.example.com:6379/", "https://jobs.example.com:8443/x",
+                                 "https://user:pw@jobs.example.com/", "http://[::ffff:10.0.0.1]/"])
+def test_fetch_rejects_odd_ports_credentials_and_mapped_addresses(monkeypatch, url):
+    monkeypatch.setattr(job_fetch, "_resolve", lambda host, port: ["93.184.216.34"] if "example" in host else [host])
+    with pytest.raises(job_fetch.JobFetchError):
+        job_fetch.fetch_job_page(url, timeout=1, max_bytes=1000, transport=httpx.MockTransport(lambda r: None))
+
+
+def test_fetch_has_a_total_deadline_and_hides_transport_errors(monkeypatch):
+    monkeypatch.setattr(job_fetch, "_resolve", lambda host, port: ["93.184.216.34"])
+
+    async def drip():
+        while True:
+            yield b"x"
+
+    slow = httpx.MockTransport(lambda r: httpx.Response(200, content=drip(), headers={"content-type": "text/html"}))
+    with pytest.raises(job_fetch.JobFetchError, match="too long"):
+        job_fetch.fetch_job_page("https://jobs.example.com/", timeout=1, max_bytes=10**9, transport=slow,
+                                 total_seconds=0.05)
+
+    # A server that stalls before (or while) sending headers is cancelled at the deadline.
+    async def stall(request):
+        await asyncio.sleep(30)
+
+    started = time.monotonic()
+    with pytest.raises(job_fetch.JobFetchError, match="too long"):
+        job_fetch.fetch_job_page("https://jobs.example.com/", timeout=60, max_bytes=1000,
+                                 transport=httpx.MockTransport(stall), total_seconds=0.2)
+    assert time.monotonic() - started < 5
+
+    def refuse(request):
+        raise httpx.ConnectError("[Errno 111] Connection refused to 10.1.2.3:5432")
+
+    with pytest.raises(job_fetch.JobFetchError) as caught:
+        job_fetch.fetch_job_page("https://jobs.example.com/", timeout=1, max_bytes=1000,
+                                 transport=httpx.MockTransport(refuse))
+    assert "10.1.2.3" not in str(caught.value)
+
+
+def test_fetch_tries_the_next_vetted_address_and_sends_ascii_host(monkeypatch):
+    lookups = []
+
+    def resolve(host, port):
+        lookups.append(host)
+        return ["93.184.216.34", "93.184.216.35"]
+
+    monkeypatch.setattr(job_fetch, "_resolve", resolve)
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.url.host, request.headers["host"], request.extensions.get("sni_hostname")))
+        if request.url.host == "93.184.216.34":
+            raise httpx.ConnectError("refused")
+        return httpx.Response(200, text=f"<html><body><main><p>{LONG}</p></main></body></html>",
+                              headers={"content-type": "text/html"})
+
+    job_fetch.fetch_job_page("https://b\u00fccher.example.com/job", timeout=1, max_bytes=100_000,
+                             transport=httpx.MockTransport(handler))
+    ascii_host = "xn--bcher-kva.example.com"
+    assert lookups == [ascii_host]  # one lookup; the second address is not re-resolved
+    assert seen == [("93.184.216.34", ascii_host, ascii_host), ("93.184.216.35", ascii_host, ascii_host)]
+
+    # One private address anywhere in the answer still refuses the whole host.
+    monkeypatch.setattr(job_fetch, "_resolve", lambda host, port: ["93.184.216.34", "10.0.0.5"])
+    with pytest.raises(job_fetch.JobFetchError, match="non-public"):
+        job_fetch.fetch_job_page("https://jobs.example.com/", timeout=1, max_bytes=1000,
+                                 transport=httpx.MockTransport(handler))
+
+
+def test_fetch_keeps_cookies_by_host_name_across_addresses(monkeypatch):
+    """Pinning sits below the client, so a cookie set before a redirect is replayed on the
+    next hop even when that hop lands on another vetted address."""
+    answers = iter([["93.184.216.34"], ["93.184.216.35"], ["93.184.216.36"]])
+    monkeypatch.setattr(job_fetch, "_resolve", lambda host, port: next(answers))
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.url.host, request.url.path, request.headers.get("cookie", "")))
+        if request.url.path == "/job":
+            return httpx.Response(302, headers=[
+                ("location", "/check"), ("set-cookie", "site=1; Domain=example.com; Path=/")])
+        if request.url.path == "/check":
+            return httpx.Response(302, headers=[("location", "/final"), ("set-cookie", "host=2; Path=/")])
+        return httpx.Response(200, text=f"<html><body><main><p>{LONG}</p></main></body></html>",
+                              headers={"content-type": "text/html"})
+
+    job_fetch.fetch_job_page("https://jobs.example.com/job", timeout=1, max_bytes=100_000,
+                             transport=httpx.MockTransport(handler))
+    assert [(host, path) for host, path, _ in seen] == [
+        ("93.184.216.34", "/job"), ("93.184.216.35", "/check"), ("93.184.216.36", "/final")]
+    assert seen[1][2] == "site=1"
+    assert sorted(seen[2][2].split("; ")) == ["host=2", "site=1"]

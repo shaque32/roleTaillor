@@ -86,3 +86,31 @@ def test_mailto_link_and_xfa_form():
 def test_unreadable_input_raises():
     with pytest.raises(InvalidDocument):
         sanitize_pdf(b"not a pdf")
+
+
+def test_strips_actions_and_files_outside_the_page_tree():
+    pdf = pikepdf.open(BytesIO(helvetica_pdf()))
+    launch = pikepdf.Dictionary(S=pikepdf.Name.Launch, F=pikepdf.String("calc.exe"))
+    item = pdf.make_indirect(pikepdf.Dictionary(Title=pikepdf.String("Click me"), A=launch))
+    pdf.Root.Outlines = pdf.make_indirect(pikepdf.Dictionary(First=item, Last=item, Count=1))
+    field = pdf.make_indirect(pikepdf.Dictionary(
+        FT=pikepdf.Name.Tx, T=pikepdf.String("f"),
+        A=pikepdf.Dictionary(S=pikepdf.Name.JavaScript, JS=pikepdf.String("app.alert(1)"))))
+    pdf.Root.AcroForm = pikepdf.Dictionary(Fields=pikepdf.Array([field]))
+    payload = pdf.make_stream(b"MZ-evil-executable-bytes", Type=pikepdf.Name.EmbeddedFile)
+    spec = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.Filespec, F=pikepdf.String("evil.exe"),
+                                                EF=pikepdf.Dictionary(F=payload)))
+    pdf.Root.AF = pikepdf.Array([spec])
+    pdf.Root.Names = pikepdf.Dictionary(Dests=pikepdf.Dictionary(Names=pikepdf.Array()),
+                                        Pages=pikepdf.Dictionary(Names=pikepdf.Array()))
+    raw = BytesIO()
+    pdf.save(raw, compress_streams=False)
+
+    cleaned = sanitize_pdf(raw.getvalue())
+    out = pikepdf.open(BytesIO(cleaned))
+    for key in ("/Outlines", "/AcroForm", "/AF"):
+        assert key not in out.Root
+    assert list(out.Root.Names.keys()) == ["/Dests"]
+    for marker in (b"calc.exe", b"app.alert", b"MZ-evil-executable-bytes", b"evil.exe"):
+        assert marker not in cleaned
+    assert len(out.pages) == 1

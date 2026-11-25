@@ -43,16 +43,28 @@ def _drop(node: pikepdf.Dictionary, key: str) -> bool:
     return False
 
 
+# Catalog entries that can run, submit, attach or launch something. A resume needs none
+# of them, so they are removed outright instead of being inspected for bad actions:
+# bookmarks (/Outlines) and form fields (/AcroForm) can carry Launch and JavaScript
+# actions, /AF and /Collection carry embedded files.
+_CATALOG_DROP = ("/OpenAction", "/AA", "/AcroForm", "/AF", "/Collection", "/Perms", "/Outlines",
+                 "/URI", "/Threads", "/Requirements")
+# The only name tree kept: named destinations, which internal links jump to.
+_NAMES_KEEP = "/Dests"
+
+
 def _strip_catalog(pdf: pikepdf.Pdf) -> bool:
     root = pdf.Root
-    changed = _drop(root, "/OpenAction") | _drop(root, "/AA")
+    changed = False
+    for key in _CATALOG_DROP:
+        changed |= _drop(root, key)
     names = root.get("/Names")
-    if isinstance(names, pikepdf.Dictionary):
-        changed |= _drop(names, "/JavaScript") | _drop(names, "/EmbeddedFiles")
-    form = root.get("/AcroForm")
-    if isinstance(form, pikepdf.Dictionary) and "/XFA" in form:
-        del root["/AcroForm"]
-        changed = True
+    if names is not None:
+        if isinstance(names, pikepdf.Dictionary):
+            for key in [k for k in list(names) if k != _NAMES_KEEP]:
+                changed |= _drop(names, key)
+        else:
+            changed |= _drop(root, "/Names")
     return changed
 
 

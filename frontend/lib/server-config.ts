@@ -36,3 +36,47 @@ export function isSameOrigin(req: Request): boolean {
 export function errorResponse(status: number, code: string, message: string): Response {
   return Response.json({ error: { code, message, details: {} } }, { status });
 }
+
+/**
+ * Headers that tell the API which browser a proxied request came from, so its rate limits
+ * are per visitor and not per web server. The address is read from the header the platform
+ * edge sets itself (CLIENT_IP_HEADER, e.g. "fly-client-ip"); X-Forwarded-For is not used
+ * because a client can send it. The API believes the address only with the shared secret.
+ */
+export function clientAddressHeaders(req: Request): Record<string, string> {
+  const secret = process.env["API_PROXY_SECRET"];
+  const header = process.env["CLIENT_IP_HEADER"];
+  if (!secret || !header) return {};
+  const address = req.headers.get(header)?.trim();
+  return address ? { "X-RT-Client-IP": address, "X-RT-Proxy-Secret": secret } : {};
+}
+
+/** Largest body the proxy relays: the API's 10 MB upload cap plus multipart overhead. */
+export const MAX_PROXY_BODY_BYTES = 10 * 1024 * 1024 + 64 * 1024;
+
+/** Read a request body, or return null once it passes `limit` bytes (declared or actual). */
+export async function readBodyLimited(req: Request, limit: number): Promise<ArrayBuffer | null> {
+  const declared = Number(req.headers.get("content-length") ?? "0");
+  if (Number.isFinite(declared) && declared > limit) return null;
+  if (!req.body) return new ArrayBuffer(0);
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > limit) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return out.buffer;
+}

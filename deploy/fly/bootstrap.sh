@@ -77,6 +77,33 @@ else
   printf 'RT_SECRET_KEY=%s\n' "$(openssl rand -hex 32)" | flyctl secrets import --stage --app "$API"
 fi
 
+# Lets the API believe the browser address the web app relays (per-visitor rate limits).
+# Both apps must hold the same value, so a half-set pair is regenerated on both.
+has_api_proxy=0; has_web_proxy=0
+flyctl secrets list --app "$API" 2>/dev/null | grep -q 'RT_PROXY_SHARED_SECRET' && has_api_proxy=1
+flyctl secrets list --app "$WEB" 2>/dev/null | grep -q 'API_PROXY_SECRET' && has_web_proxy=1
+if [[ $has_api_proxy -eq 1 && $has_web_proxy -eq 1 ]]; then
+  echo "RT_PROXY_SHARED_SECRET and API_PROXY_SECRET already set (to rotate: set both to one new value)"
+else
+  if [[ $has_api_proxy -ne $has_web_proxy ]]; then
+    echo "proxy secret is set on only one of $API and $WEB; staging a new value on both"
+  fi
+  PROXY_SECRET="$(openssl rand -hex 32)"
+  printf 'RT_PROXY_SHARED_SECRET=%s\n' "$PROXY_SECRET" | flyctl secrets import --stage --app "$API"
+  if ! printf 'API_PROXY_SECRET=%s\n' "$PROXY_SECRET" | flyctl secrets import --stage --app "$WEB"; then
+    PROXY_SECRET=""
+    # Never leave the two apps holding different values: a later run could not tell.
+    flyctl secrets unset --stage --app "$API" RT_PROXY_SHARED_SECRET || true
+    flyctl secrets unset --stage --app "$WEB" API_PROXY_SECRET || true
+    echo "ERROR: could not set API_PROXY_SECRET on $WEB, so removing the proxy secret from both apps was attempted." >&2
+    echo "Fix access to $WEB and run this script again. If the removal above also failed, first run:" >&2
+    echo "  flyctl secrets unset --stage --app $API RT_PROXY_SHARED_SECRET" >&2
+    echo "  flyctl secrets unset --stage --app $WEB API_PROXY_SECRET" >&2
+    exit 1
+  fi
+  PROXY_SECRET=""
+fi
+
 step "7/7 Provider and billing secrets (blank = skip; input hidden)"
 for name in ANTHROPIC_API_KEY DEEPSEEK_API_KEY RT_STRIPE_SECRET_KEY RT_STRIPE_WEBHOOK_SECRET RT_STRIPE_SUBSCRIPTION_PRICE_ID; do
   read -r -s -p "$name: " value || value=""

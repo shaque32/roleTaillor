@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hmac
+import ipaddress
 from collections.abc import Callable
 from typing import Annotated
 from uuid import UUID
@@ -51,27 +53,66 @@ def require_ai_consent(principal: CurrentPrincipal) -> Principal:
 AIPrincipal = Annotated[Principal, Depends(require_ai_consent)]
 
 
-def _client_ip(request: Request) -> str:
-    # Behind a proxy, run uvicorn with --proxy-headers and --forwarded-allow-ips so this
-    # is the original client address.
-    return request.client.host if request.client else "unknown"
+def _valid_ip(value: str | None) -> str | None:
+    """Canonical form of a client address; IPv6 clients are bucketed by their /64."""
+    try:
+        ip = ipaddress.ip_address((value or "").strip())
+    except ValueError:
+        return None
+    if ip.version == 6:
+        if ip.ipv4_mapped is not None:
+            return str(ip.ipv4_mapped)
+        return str(ipaddress.ip_network(f"{ip}/64", strict=False).network_address)
+    return str(ip)
 
 
-def enforce_rate_limit(request: Request, scope: str, identity: str, limit: int, message: str) -> None:
-    retry_after = request.app.state.limiter.hit(scope, identity, limit)
+def client_ip(request: Request) -> str:
+    """The address rate limits are keyed on. X-Forwarded-For is never trusted: anyone can
+    send it. In order: the browser address relayed by our own web app (authenticated by
+    the shared proxy secret), the header the platform edge sets, then the socket peer."""
+    settings = get_settings()
+    secret = settings.proxy_shared_secret
+    if secret and hmac.compare_digest(request.headers.get("x-rt-proxy-secret", "").encode(), secret.encode()):
+        relayed = _valid_ip(request.headers.get("x-rt-client-ip"))
+        if relayed:
+            return relayed
+    if settings.client_ip_header:
+        edge = _valid_ip(request.headers.get(settings.client_ip_header))
+        if edge:
+            return edge
+    peer = request.client.host if request.client else None
+    return _valid_ip(peer) or peer or "unknown"
+
+
+def enforce_rate_limit(request: Request, scope: str, identity: str, limit: int, message: str,
+                       window_s: int = 60) -> None:
+    retry_after = request.app.state.limiter.hit(scope, identity, limit, window_s)
     if retry_after is not None:
         raise AppError(429, "rate_limited", message, {"retry_after": retry_after})
 
 
 def rate_limited_by_ip(scope: str) -> Callable[[Request], None]:
     def dependency(request: Request) -> None:
-        enforce_rate_limit(request, scope, _client_ip(request), get_settings().rate_limit_auth_per_minute,
+        enforce_rate_limit(request, scope, client_ip(request), get_settings().rate_limit_auth_per_minute,
                            "Too many attempts. Try again shortly.")
 
     return dependency
 
 
+def rate_limited_by_user(scope: str, setting: str) -> Callable[[Request, Principal], None]:
+    """Per-user fixed-window limit; `setting` names the Settings field holding the limit."""
+
+    def dependency(request: Request, principal: CurrentPrincipal) -> None:
+        enforce_rate_limit(request, scope, str(principal.user_id), getattr(get_settings(), setting),
+                           "You are doing that too often. Try again shortly.")
+
+    return dependency
+
+
 def generation_rate_limit(request: Request, principal: CurrentPrincipal) -> None:
-    enforce_rate_limit(request, "generate", str(principal.user_id),
-                       get_settings().rate_limit_generation_per_minute,
+    """Every model run goes through here: first generations, iterations and retries."""
+    settings = get_settings()
+    enforce_rate_limit(request, "generate", str(principal.user_id), settings.rate_limit_generation_per_minute,
                        "Too many generations at once. Try again shortly.")
+    enforce_rate_limit(request, "generate-day", str(principal.org_id), settings.generation_runs_per_org_per_day,
+                       "You have reached today's generation limit. Try again tomorrow.", window_s=86_400)

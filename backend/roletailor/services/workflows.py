@@ -217,6 +217,9 @@ def request_iteration(principal: Principal, workflow_id: UUID, focus_block_ids: 
         ).scalar_one()
         if last is None or workflow["status"] not in ("completed", "failed"):
             raise invalid_state("Iterations need a finished generation.", status=workflow["status"])
+        if last >= get_settings().max_iterations_per_workflow:
+            raise AppError(409, "iteration_limit", "This tailoring has reached its revision limit. "
+                           "Start a new tailoring to keep refining.")
         state = _run_state(last + 1, focus_block_ids or None, instructions)
         workflow = _set_status(conn, workflow_id, "queued", state)
     _enqueue(principal, workflow_id, state["run"])

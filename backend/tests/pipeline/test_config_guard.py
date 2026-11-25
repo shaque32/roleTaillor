@@ -4,6 +4,17 @@ from pydantic import ValidationError
 from roletailor.config import Settings
 
 LONG_KEY = "x" * 40
+GOOD = {
+    "environment": "prod",
+    "secret_key": LONG_KEY,
+    "proxy_shared_secret": "p" * 40,
+    "storage_backend": "s3",
+    "llm_mode": "live",
+    "database_url": "postgresql+psycopg://rt_app:a-real-password@db.internal:5432/roletailor",
+    "api_base_url": "https://api.roletailor.example",
+    "app_base_url": "https://app.roletailor.example",
+    "cors_origins": ["https://app.roletailor.example"],
+}
 
 
 def make(**kw) -> Settings:
@@ -11,23 +22,36 @@ def make(**kw) -> Settings:
 
 
 def test_dev_defaults_pass():
-    make()
+    make(environment="dev")
 
 
-def test_prod_with_default_key_fails():
-    with pytest.raises(ValidationError):
-        make(environment="prod", storage_backend="s3")
+def test_full_production_config_passes():
+    make(**GOOD)
+    make(**{**GOOD, "environment": "staging", "llm_mode": "fake"})
 
 
-def test_prod_with_short_key_fails():
-    with pytest.raises(ValidationError):
-        make(environment="prod", storage_backend="s3", secret_key="short")
+def test_unknown_environment_fails():
+    with pytest.raises(ValidationError, match="RT_ENVIRONMENT"):
+        make(environment="production")
 
 
-def test_prod_with_local_storage_fails():
-    with pytest.raises(ValidationError):
-        make(environment="staging", secret_key=LONG_KEY)
+@pytest.mark.parametrize(("override", "message"), [
+    ({"secret_key": "dev-insecure-secret-change-me"}, "RT_SECRET_KEY"),
+    ({"secret_key": "short"}, "RT_SECRET_KEY"),
+    ({"storage_backend": "local"}, "RT_STORAGE_BACKEND"),
+    ({"proxy_shared_secret": ""}, "RT_PROXY_SHARED_SECRET"),
+    ({"database_url": "postgresql+psycopg://rt_app:rt_app@db:5432/roletailor"}, "development password"),
+    ({"llm_mode": "fake"}, "RT_LLM_MODE"),
+    ({"api_base_url": "http://localhost:8000"}, "RT_API_BASE_URL"),
+    ({"app_base_url": "http://app.roletailor.example"}, "RT_APP_BASE_URL"),
+    ({"cors_origins": ["http://localhost:3000"]}, "RT_CORS_ORIGINS"),
+    ({"cors_origins": ["*"]}, "RT_CORS_ORIGINS"),
+])
+def test_unsafe_production_values_fail(override, message):
+    with pytest.raises(ValidationError, match=message):
+        make(**{**GOOD, **override})
 
 
-def test_prod_with_long_key_and_s3_passes():
-    make(environment="prod", secret_key=LONG_KEY, storage_backend="s3")
+def test_staging_is_guarded_too():
+    with pytest.raises(ValidationError, match="RT_STORAGE_BACKEND"):
+        make(**{**GOOD, "environment": "staging", "storage_backend": "local"})

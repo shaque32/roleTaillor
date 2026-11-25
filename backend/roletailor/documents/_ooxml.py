@@ -31,7 +31,7 @@ PKG_REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
 XML_SPACE = "{http://www.w3.org/XML/1998/namespace}space"
 NS = {"w": W_NS, "r": R_NS, "mc": MC_NS, "a": A_NS}
 
-MAX_PART_BYTES = 64 * 1024 * 1024
+MAX_PART_BYTES = 16 * 1024 * 1024
 
 _XML_DECL = re.compile(rb"^\s*<\?xml[^>]*\?>\s*")
 
@@ -330,3 +330,45 @@ def non_editable_reason(ref: ParagraphRef) -> str | None:
         if reason:
             return reason
     return None
+
+
+_KEEP_EXTERNAL = ("/hyperlink",)
+
+
+def strip_external_relationships(data: bytes) -> bytes:
+    """`data` without relationships that make a renderer fetch something: linked images,
+    OLE objects, attached templates and sub-documents with TargetMode="External". A
+    converter follows those (file:// and http:// alike), which would read local files or
+    reach internal hosts on behalf of whoever uploaded the document. Hyperlinks are kept;
+    they are only followed by a person. Returns `data` itself when nothing had to go."""
+    try:
+        source = zipfile.ZipFile(BytesIO(data))
+    except zipfile.BadZipFile as exc:
+        raise InvalidDocument("not a DOCX (zip) file") from exc
+    replaced: dict[str, bytes] = {}
+    for info in source.infolist():
+        if not info.filename.endswith(".rels"):
+            continue
+        if info.file_size > MAX_PART_BYTES:
+            # Passing it through unfiltered would hand the converter unchecked targets.
+            raise InvalidDocument("relationship part too large")
+        root = parse_xml(source.read(info.filename))
+        doomed = [
+            rel for rel in root.iter(f"{{{PKG_REL_NS}}}Relationship")
+            if rel.get("TargetMode", "").lower() == "external"
+            and not rel.get("Type", "").endswith(_KEEP_EXTERNAL)
+        ]
+        if doomed:
+            for rel in doomed:
+                rel.getparent().remove(rel)
+            replaced[info.filename] = etree.tostring(root, encoding="UTF-8", xml_declaration=True,
+                                                     standalone=True)
+    if not replaced:
+        return data
+    out = BytesIO()
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as target:
+        for info in source.infolist():
+            if info.file_size > MAX_PART_BYTES:
+                raise InvalidDocument(f"part {info.filename} exceeds {MAX_PART_BYTES} bytes")
+            target.writestr(info.filename, replaced.get(info.filename) or source.read(info.filename))
+    return out.getvalue()
