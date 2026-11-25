@@ -31,7 +31,6 @@ def test_dev_defaults_pass():
 def test_full_production_config_passes():
     make(**GOOD)
     make(**{**GOOD, "environment": "staging", "llm_mode": "fake"})
-    make(**{**GOOD, "environment": "staging", "email_provider": "console"})
 
 
 def test_unknown_email_provider_fails_everywhere():
@@ -51,8 +50,10 @@ def test_unknown_environment_fails():
     ({"proxy_shared_secret": ""}, "RT_PROXY_SHARED_SECRET"),
     ({"database_url": "postgresql+psycopg://rt_app:rt_app@db:5432/roletailor"}, "development password"),
     ({"llm_mode": "fake"}, "RT_LLM_MODE"),
-    ({"email_provider": "console"}, "RT_EMAIL_PROVIDER must be 'resend' in prod"),
-    ({"email_provider": "memory"}, "tests only"),
+    ({"email_provider": "console"}, "RT_EMAIL_PROVIDER must be 'resend' outside dev/test"),
+    ({"email_provider": "memory"}, "RT_EMAIL_PROVIDER must be 'resend' outside dev/test"),
+    ({"environment": "staging", "llm_mode": "fake", "email_provider": "console"},
+     "RT_EMAIL_PROVIDER must be 'resend' outside dev/test"),
     ({"RESEND_API_KEY": ""}, "RESEND_API_KEY must be set"),
     ({"email_from": "RoleTailor <no-reply@roletailor.example>"}, "RT_EMAIL_FROM"),
     ({"api_base_url": "http://localhost:8000"}, "RT_API_BASE_URL"),

@@ -64,6 +64,12 @@ def _well_signed(token: str, purpose: str) -> bool:
 def issue_token(conn: Connection, user_id: UUID | str, purpose: str, email: str, ttl: timedelta) -> str:
     """Create a token for the user and retire any earlier unused one of the same purpose,
     so only the newest link works."""
+    # Two issuances for one user and purpose must not overlap, or each would retire the
+    # other's predecessors and both new links would stay live. An advisory lock (held to
+    # the end of the transaction) serializes issuers without touching the users row,
+    # which the consume paths lock after a token row.
+    conn.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:k, 0))"),
+                 {"k": f"rt-user-token:{user_id}:{purpose}"})
     conn.execute(
         text("UPDATE user_tokens SET used_at = now()"
              " WHERE user_id = :uid AND purpose = :p AND used_at IS NULL"),

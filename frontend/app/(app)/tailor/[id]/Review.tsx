@@ -81,6 +81,7 @@ export function Review() {
     try {
       const wf = action === "pause" ? await api.pauseWorkflow(id) : action === "resume" ? await api.resumeWorkflow(id) : await api.cancelWorkflow(id);
       setDetail((d) => (d ? { ...d, workflow: { ...d.workflow, ...wf } } : d));
+      setUnverified(false);
       restartPolling();
     } catch (e) {
       if (isEmailUnverified(e)) setUnverified(true);
@@ -162,6 +163,7 @@ export function Review() {
                   onClick={async () => {
                     try {
                       await api.iterate(id, {});
+                      setUnverified(false);
                       restartPolling();
                     } catch (e) {
                       if (isEmailUnverified(e)) setUnverified(true);

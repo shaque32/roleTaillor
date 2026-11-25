@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { auth, ApiError } from "@/lib/api";
 import { takeHashToken } from "@/lib/hash-token";
 import { Alert, Button, ButtonLink, PasswordInput } from "@/components/ui";
@@ -15,7 +15,12 @@ export function ResetPasswordForm() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
 
+  const tokenRead = useRef(false);
+
   useEffect(() => {
+    // Strict mode replays this effect; the first run already removed the fragment.
+    if (tokenRead.current) return;
+    tokenRead.current = true;
     setToken(takeHashToken());
   }, []);
 

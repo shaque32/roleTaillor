@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, auth, ApiError } from "@/lib/api";
 import { useResource } from "@/lib/hooks";
 import { Button } from "@/components/ui";
@@ -57,6 +57,15 @@ export function VerifyEmailBanner() {
   const me = useResource(() => api.me());
   const [hidden, setHidden] = useState(false);
   const user = me.data;
+  const unverified = Boolean(user && user.email_verified_at === null);
+  const reload = me.reload;
+  // The link is usually opened in another tab: check again when this one is looked at.
+  useEffect(() => {
+    if (!unverified) return;
+    const onFocus = () => void reload();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [unverified, reload]);
   if (hidden || !user || user.email_verified_at !== null) return null;
   return (
     <div className="border-b border-amber-100 bg-amber-50 text-amber-900">

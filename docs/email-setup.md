@@ -40,15 +40,16 @@ These steps need your accounts, so they are yours. Allow about 15 minutes plus D
    "Forgot password?" from the sign-in page. Check the Resend dashboard (Emails) if nothing
    arrives.
 
-Outside dev the API refuses to start with `RT_EMAIL_PROVIDER=resend` and no key, or with a
-sender still on the `.example` placeholder. Prod must use `resend`. Staging may use `console`
-if you do not want it to send real email.
+Staging and prod must use `resend`: outside dev the API refuses to start with any other
+provider, with no key, or with a sender still on the `.example` placeholder. The console
+provider is for a developer's own machine only, because it writes working one-time links
+to the log.
 
 ## Settings
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `RT_EMAIL_PROVIDER` | `console` | `console` logs the email, `resend` sends it |
+| `RT_EMAIL_PROVIDER` | `console` | `console` logs the email (dev only), `resend` sends it |
 | `RESEND_API_KEY` | | Resend key (`RT_RESEND_API_KEY` works too). Secret |
 | `RT_EMAIL_FROM` | placeholder | Sender, on the verified domain |
 | `RT_EMAIL_REPLY_TO` | | Optional reply address |

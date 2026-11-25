@@ -40,9 +40,10 @@ class EmailProvider(Protocol):
 
 
 class ConsoleProvider:
-    """Writes the message to the log instead of sending it. The body holds the link, so
-    this is how a developer follows a verification or reset link locally. Never in prod
-    (the config guard rejects it there)."""
+    """Writes the message to the log instead of sending it. The body holds the one-time
+    link, so this is how a developer follows a verification or reset link locally. The
+    config guard allows this provider in dev and test only, so a link never reaches a
+    shared log."""
 
     def send(self, message: EmailMessage) -> None:
         log.info("email (console provider, not sent)\nTo: %s\nSubject: %s\n\n%s",

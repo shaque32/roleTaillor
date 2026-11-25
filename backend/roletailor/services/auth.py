@@ -148,8 +148,12 @@ def register(email: str, password: str, full_name: str, device_label: str | None
 
 
 def _verify_password(conn: Connection, email: str, password: str) -> dict | None:
+    # The row lock makes a login and a password reset for the same account take turns:
+    # a login that checked the old password commits its session before the reset revokes
+    # sessions, or waits and then reads the new hash. NO KEY UPDATE conflicts with the
+    # reset's UPDATE but not with inserts that reference the user.
     row = fetch_one(
-        conn, "SELECT id, password_hash FROM users WHERE lower(email) = :e", {"e": email}
+        conn, "SELECT id, password_hash FROM users WHERE lower(email) = :e FOR NO KEY UPDATE", {"e": email}
     )
     stored = row["password_hash"] if row and row["password_hash"] else _DUMMY_HASH
     try:

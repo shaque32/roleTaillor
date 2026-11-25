@@ -293,3 +293,42 @@ def test_console_provider_logs_the_link(caplog):
         mailer.ConsoleProvider().send(_message())
     assert "reset-password#token=t.s" in caplog.text
 
+
+
+def test_concurrent_issuance_leaves_one_live_link(make_user, outbox, database):
+    from concurrent.futures import ThreadPoolExecutor
+
+    user = make_user(consent=False)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(lambda _: email_auth.request_password_reset(user.email), range(8)))
+    live = _sql(database, "SELECT count(*) FROM roletailor.user_tokens WHERE user_id = %s"
+                          " AND purpose = 'reset_password' AND used_at IS NULL", (user.id,))
+    assert live[0][0] == 1
+
+
+def test_login_racing_a_reset_never_keeps_a_session(client, make_user, outbox, database):
+    """A login with the old password either lands before the reset (and is revoked by it)
+    or after it (and is refused). No session may survive the reset."""
+    from concurrent.futures import ThreadPoolExecutor
+    from contextlib import suppress
+
+    from roletailor.services import auth as auth_service
+    from roletailor.services.errors import AppError
+
+    for _ in range(4):
+        user = make_user(consent=False)
+        client.post("/v1/auth/forgot-password", json={"email": user.email})
+        token = _token(_last(outbox, "reset_password", user.email), "reset-password")
+
+        def old_login(_, email=user.email):
+            with suppress(AppError):
+                auth_service.login(email, PASSWORD, "race")
+
+        with ThreadPoolExecutor(max_workers=5) as pool:
+            logins = [pool.submit(old_login, i) for i in range(4)]
+            reset = pool.submit(email_auth.reset_password, token, NEW_PASSWORD)
+            reset.result()
+            [f.result() for f in logins]
+        active = _sql(database, "SELECT count(*) FROM roletailor.sessions WHERE user_id = %s"
+                                " AND revoked_at IS NULL", (user.id,))
+        assert active[0][0] == 0

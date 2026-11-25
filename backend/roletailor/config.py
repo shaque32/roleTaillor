@@ -39,8 +39,9 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:3000"]
 
     # Transactional email (verification and password reset links).
-    # "console" writes the message to the log (dev), "memory" keeps it in process (tests),
-    # "resend" sends through the Resend API. See docs/email-setup.md.
+    # "console" writes the message to the log (dev only), "memory" keeps it in process
+    # (tests), "resend" sends through the Resend API and is required outside dev/test.
+    # See docs/email-setup.md.
     email_provider: str = "console"
     resend_api_key: str = Field(default="", validation_alias=AliasChoices("RT_RESEND_API_KEY", "RESEND_API_KEY"))
     email_from: str = "RoleTailor <no-reply@roletailor.example>"
@@ -127,11 +128,13 @@ class Settings(BaseSettings):
         if self.environment in {"dev", "test"}:
             return self
         problems: list[str] = []
-        if self.email_provider == "memory":
-            problems.append("RT_EMAIL_PROVIDER 'memory' is for tests only")
-        if self.environment == "prod" and self.email_provider != "resend":
-            problems.append("RT_EMAIL_PROVIDER must be 'resend' in prod (the console provider only logs)")
-        if self.email_provider == "resend":
+        # The console provider writes each email, with its one-time link, to the log. That
+        # is fine on a developer's machine and nowhere else: a shared log would hand a
+        # working password-reset link to anyone who can read it.
+        if self.email_provider != "resend":
+            problems.append("RT_EMAIL_PROVIDER must be 'resend' outside dev/test (console and memory"
+                            " are for local development and tests)")
+        else:
             if not self.resend_api_key:
                 problems.append("RESEND_API_KEY must be set when RT_EMAIL_PROVIDER is 'resend'")
             if ".example" in self.email_from or "@" not in self.email_from:
