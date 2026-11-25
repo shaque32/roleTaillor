@@ -107,7 +107,7 @@ Repeat for `prod` with the Basic Postgres plan and live Stripe keys.
 
 - Migrations are forward only. Each `db/migrations/NNN_*.sql` file manages its own transaction. They are recorded in `public.schema_migrations` and serialised with an advisory lock.
 - Old and new code run side by side during a rolling deploy, so keep migrations backwards compatible: add columns before the code that uses them ships, and drop them in a later release.
-- Migration 006 adds the `processing_*` columns to `resumes`. It is additive, so old API code keeps working; deploy the worker image with the API, since only the new worker consumes `ocr_resume` tasks (an old worker would reject the unknown task and the resume would read as failed after `RT_OCR_STALE_AFTER_SECONDS`).
+- Migration 008 adds the `processing_*` columns to `resumes`. It is additive, so old API code keeps working; deploy the worker image with the API, since only the new worker consumes `ocr_resume` tasks (an old worker would reject the unknown task and the resume would read as failed after `RT_OCR_STALE_AFTER_SECONDS`).
 - If a migration fails, the release stops before any machine is replaced. Fix the migration in a new commit and deploy again.
 
 ## Rollback
