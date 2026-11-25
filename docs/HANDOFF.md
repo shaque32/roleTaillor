@@ -13,7 +13,7 @@ RoleTailor tailors an uploaded resume to a job description. The user uploads a r
 Three design commitments shape everything:
 
 - **It never invents facts.** Every rewrite is checked by code against the original resume. A rewrite that fails is retried and then dropped in favour of the original text.
-- **It keeps the original formatting.** Edits are applied inside the original DOCX or PDF, so fonts, spacing and layout stay as they were.
+- **It keeps the original formatting for DOCX and text PDF resumes.** Edits are applied inside the original file, so fonts, spacing and layout stay as they were. Scanned PDFs and pasted text have no layout to edit in place, so they are rendered through an ATS template.
 - **It is cheap to run.** Each step uses the cheapest model that holds quality. A tailoring costs about $0.025 in model spend.
 
 ### Product status
@@ -146,7 +146,10 @@ Estimated cost: about $60 a month for production and $20 for staging, before mod
 
 - [ ] Create a Fly.io account with billing, install `flyctl`, and run `fly auth login`.
 - [ ] Create the Postgres cluster (Fly Managed Postgres, version 16, which ships pgvector). Developer plan for staging, Basic for production.
-- [ ] Create the database roles as the cluster admin: `psql "$ADMIN_URL" -v owner_password=... -v app_password=... -f db/bootstrap/managed_roles.sql`. This creates `rt_owner` (runs migrations) and `rt_app` (the app, bound by row-level security). Generate both passwords with `openssl rand -hex 24` and keep them in your password manager. `rt_app` must never be a superuser, own the database, or have BYPASSRLS. The API health check fails if it does.
+- [ ] Create the database roles as the cluster admin. This creates `rt_owner` (runs migrations) and `rt_app` (the app, bound by row-level security). `rt_app` must never be a superuser, own the database, or have BYPASSRLS. The API health check fails if it does. Generate two passwords with `openssl rand -hex 24` and store them in your password manager first. Then, from the repo root, open a session with `psql "$ADMIN_URL"` and run these three lines, entering the passwords at psql's own prompts so they never appear on a command line, in shell history or in the process list:
+  - `\prompt 'rt_owner password: ' owner_password`
+  - `\prompt 'rt_app password: ' app_password`
+  - `\i db/bootstrap/managed_roles.sql`
 - [ ] Run `deploy/fly/bootstrap.sh staging`. It creates the three apps (`roletailor-api-staging`, `roletailor-web-staging`, `roletailor-redis-staging`), the Redis volume and the Tigris bucket, and it generates and stores these without showing them:
   - `REDIS_PASSWORD` (Redis app) and `RT_REDIS_URL` (API app)
   - `RT_SECRET_KEY` (API app)
