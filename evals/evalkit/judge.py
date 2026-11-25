@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 from roletailor.ai.gateway import _strip_fences
 from roletailor.ai.providers.base import LLMRequest, ModelSpec, ProviderError
 
-RUBRIC_VERSION = "3"
+RUBRIC_VERSION = "4"
 SYSTEM = """You review resume edits made by an automated tailoring tool. You get the job
 description, the original text of each edited block, and the new text. Judge only what
 the edits changed. Be strict and consistent; do not reward length.
@@ -30,6 +30,10 @@ Score each criterion from 1 (bad) to 5 (excellent):
   of those the edits surfaced in the job's wording. 5: the important ones are captured
   and no edit is pointless. 3: about half captured, or good edits mixed with reorderings
   that do nothing. 1: the edits are cosmetic, or clear matches were left unsurfaced.
+  A match means the resume shows the same thing or a specific instance of it (Terraform
+  modules for infrastructure as code). A different audience, scale, level, or credential
+  is not a match (an executive committee is not the board; CI is not CD), and surfacing
+  it would be dishonest: never list those as missed.
   Do not mark down for requirements the candidate has not met; leaving those out is
   correct. A resume with nothing honest to improve and no edits scores 5.
 - readability: the new text is clear, specific, grammatical, and free of filler or

@@ -66,6 +66,10 @@ routing:
   request_timeout_seconds: 45
   rewrite_batch_size: 8
   rewrite_concurrency: 4
+  # Rewrite attempts per block: 2 = one retry with the gate's reasons, then keep the
+  # original. A third round escalates a tier; live evals showed it firing on 83% of runs
+  # and adding about 10 seconds for little recovered.
+  rewrite_max_rounds: 2
   # Re-plan one tier higher when the planner reports confidence below 0.6. Off: in the
   # first live eval this fired on 40% of runs (Sonnet to Opus), tripling plan cost with
   # no measured quality gain. Turn on only with a live eval that shows it pays.

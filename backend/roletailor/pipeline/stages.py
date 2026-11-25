@@ -142,11 +142,36 @@ def plan(gw: Gateway, *, doc: ParsedDocument, structure: ResumeStructure, job: J
             p = p2 if p2.confidence >= p.confidence else p
         except AIUnavailable:
             pass
-    return _sanitize_plan(p, job, scopes, focus)
+    return _sanitize_plan(p, job, scopes, focus, texts={b.id: b.text for b in doc.text_blocks()})
+
+
+# Named tools and credentials must appear in the resume literally. Only skills, domains,
+# and practices can be claimed through a quote ("Terraform modules" shows
+# "infrastructure as code"); "has a CPA" or "used Snowflake" cannot be argued into being.
+QUOTABLE_CATEGORIES = {"skill", "domain", "soft", "other"}
+
+
+def _valid_term_evidence(bp: BlockPlan, job: JobAnalysis, scope: str, texts: dict[str, str]) -> list:
+    by_term = {k.term.lower(): k for k in job.keywords}
+    own = clean(texts.get(bp.block_id, "")).lower()
+    whole = clean("\n".join(texts.values())).lower()
+    keep, seen = [], set()
+    for te in bp.term_evidence:
+        k = by_term.get(te.job_term.strip().lower())
+        quote = clean(te.resume_quote).lower()
+        if k is None or k.category not in QUOTABLE_CATEGORIES or len(quote) < 4 or k.term in seen:
+            continue
+        # A bullet may only lean on its own words; the summary and skills lines may
+        # lean on anything the resume says.
+        if quote in (own if scope == "bullet" else whole):
+            te.job_term = k.term
+            keep.append(te)
+            seen.add(k.term)
+    return keep[:3]
 
 
 def _sanitize_plan(p: TailoringPlan, job: JobAnalysis, scopes: dict[str, str],
-                   focus: list[str] | None) -> TailoringPlan:
+                   focus: list[str] | None, texts: dict[str, str] | None = None) -> TailoringPlan:
     terms = {k.term.lower(): k.term for k in job.keywords}
     keep: list[BlockPlan] = []
     seen: set[str] = set()
@@ -157,6 +182,7 @@ def _sanitize_plan(p: TailoringPlan, job: JobAnalysis, scopes: dict[str, str],
             continue
         seen.add(bp.block_id)
         bp.target_keywords = [terms[t.lower()] for t in bp.target_keywords if t.lower() in terms][:3]
+        bp.term_evidence = _valid_term_evidence(bp, job, scopes[bp.block_id], texts) if texts else []
         keep.append(bp)
     if focus:  # user-requested blocks the planner skipped still get a light pass
         keep += [BlockPlan(block_id=b, instruction="Improve clarity and relevance to the job.")

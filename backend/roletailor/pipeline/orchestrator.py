@@ -36,7 +36,7 @@ from roletailor.pipeline.validation.rules import (
 )
 
 log = logging.getLogger(__name__)
-MAX_ROUNDS = 3  # 1st try, retry with feedback, escalate one tier
+MAX_ROUNDS = 3  # upper bound; routing.rewrite_max_rounds sets the actual number
 BLOCKING_RULES = ("facts.numbers", "facts.terms", "facts.keywords", "facts.claims",
                   "layout.length", "authenticity.phrases", "authenticity.stuffing")
 
@@ -142,16 +142,10 @@ def _rewrite_and_validate(gateway: Gateway, *, document: ParsedDocument, plan, s
     verifier_down = False
     no_gain: dict[str, str] = {}
     context = {"job_title": job.title, "positioning": plan.positioning,
-               "tone": prefs.get("tone"), "technical_depth": prefs.get("technical_depth"),
-               # The job's own wording, so the writer can use it where a line already
-               # describes that work. The fact gates still decide what may appear.
-               "job_requirements": {
-                   "responsibilities": job.responsibilities[:8],
-                   "must_have": [k.term for k in job.keywords if k.importance == "must"][:15],
-                   "preferred": [k.term for k in job.keywords if k.importance != "must"][:15]}}
+               "tone": prefs.get("tone"), "technical_depth": prefs.get("technical_depth")}
     router = gateway.router
 
-    for rnd in range(MAX_ROUNDS):
+    for rnd in range(min(MAX_ROUNDS, router.rewrite_max_rounds)):
         if not pending:
             break
         items = []
@@ -160,6 +154,7 @@ def _rewrite_and_validate(gateway: Gateway, *, document: ParsedDocument, plan, s
             lo, hi = scope_length_bounds(len(clean(orig)), scopes[bid], doc_ctx.length_tolerance)
             items.append({"block_id": bid, "text": orig, "target_keywords": bp.target_keywords,
                           "evidence": bp.evidence, "instruction": bp.instruction,
+                          "term_evidence": [te.model_dump() for te in bp.term_evidence],
                           "min_chars": max(lo, 1), "max_chars": hi})
         out = stages.rewrite(gateway, items=items, context=context, feedback=feedback,
                              label=f"{it}:rewrite:r{rnd}", batch_size=router.rewrite_batch_size,
@@ -179,7 +174,8 @@ def _rewrite_and_validate(gateway: Gateway, *, document: ParsedDocument, plan, s
                 no_gain[bid] = r.new_text
                 continue  # cosmetic edit: keep the original, do not spend a verify call
             ctx = BlockContext(block_id=bid, original=by_id[bid].text, scope=scopes[bid],
-                               target_keywords=plans[bid].target_keywords)
+                               target_keywords=plans[bid].target_keywords,
+                               supported_terms=[te.job_term for te in plans[bid].term_evidence])
             v = check_block(ctx, r.new_text, doc_ctx)
             if v:
                 failures[bid] = v
@@ -187,7 +183,9 @@ def _rewrite_and_validate(gateway: Gateway, *, document: ParsedDocument, plan, s
                 candidates[bid] = r
 
         if candidates:
-            pairs = [{"block_id": b, "original": by_id[b].text, "rewritten": r.new_text}
+            pairs = [{"block_id": b, "original": by_id[b].text, "rewritten": r.new_text,
+                      "claimed_equivalences": [te.model_dump() for te in plans[b].term_evidence
+                                               if contains_any(r.new_text, [te.job_term])]}
                      for b, r in candidates.items()]
             try:
                 check = stages.verify_claims(gateway, pairs=pairs, facts=doc_ctx.facts,

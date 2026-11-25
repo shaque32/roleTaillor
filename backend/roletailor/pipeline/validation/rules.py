@@ -38,6 +38,9 @@ class BlockContext:
     original: str
     scope: str  # "bullet" | "summary" | "skills"
     target_keywords: list[str] = field(default_factory=list)
+    # Job terms the planner backed with a verbatim resume quote (see stages.py). They
+    # pass the literal keyword gate; the claim verifier still has to agree.
+    supported_terms: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -66,7 +69,8 @@ def check_block(ctx: BlockContext, new_text: str, doc: DocContext) -> list[Viola
     # fact inventory for summary and skills lines.
     allowed_pool = orig if ctx.scope == "bullet" else orig + "\n" + "\n".join(doc.fact_terms())
     invented = sorted(t for t in tech_terms(new) - tech_terms(orig)
-                      if not contains_term(allowed_pool, t) and not _is_jd_synonym_of_orig(t, orig, doc))
+                      if not contains_term(allowed_pool, t) and not _is_jd_synonym_of_orig(t, orig, doc)
+                      and not any(contains_term(s, t) for s in ctx.supported_terms))
     if invented:
         out.append(Violation(rule_key="facts.terms", block_id=bid,
                              detail=f"introduces names or technologies not in the original: {invented}"))
@@ -74,6 +78,8 @@ def check_block(ctx: BlockContext, new_text: str, doc: DocContext) -> list[Viola
     # facts.keywords: a JD keyword may appear only if the original supports it.
     for k in doc.job.keywords:
         forms = [k.term, *k.synonyms]
+        if k.term in ctx.supported_terms:
+            continue
         if contains_any(new, forms) and not contains_any(allowed_pool, forms):
             out.append(Violation(rule_key="facts.keywords", block_id=bid,
                                  detail=f"adds job keyword '{k.term}' that the original does not show"))

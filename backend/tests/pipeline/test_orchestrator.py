@@ -27,10 +27,20 @@ def doc():
     return data, read_docx(data)
 
 
-def run(doc, provider, **kw):
+def _config(**routing):
+    import yaml
+
+    base = yaml.safe_load(Settings().models_config_path.read_text())
+    return {**base, "routing": {**base["routing"], **routing}}
+
+
+def run(doc, provider, routing=None, **kw):
+    from roletailor.ai.router import ModelRouter
+
     sink = MemorySink()
     gw = build_gateway(sink, settings=Settings(llm_mode="fake"), cache=MemoryCache(),
-                       providers={"anthropic": provider, "deepseek": provider})
+                       providers={"anthropic": provider, "deepseek": provider},
+                       router=ModelRouter(_config(**(routing or {}))))
     return tailor(document=doc[1], job_text=JD, prefs=TailoringPrefs(), gateway=gw, **kw), sink
 
 
@@ -68,7 +78,7 @@ class Fabricator(FakeProvider):
 
 def test_fabrication_is_retried_escalated_and_reverted(doc):
     prov = Fabricator()
-    result, sink = run(doc, prov)
+    result, sink = run(doc, prov, routing={"rewrite_max_rounds": 3})
     assert result.edits == {} and result.changes == []
     rewrite_models = [m for m, k in prov.calls if k == "rewrite"]
     assert rewrite_models[:2] == ["claude-haiku-5-5", "claude-haiku-5-5"]
@@ -164,3 +174,10 @@ def test_low_confidence_plan_escalation_is_opt_in_and_skips_empty_plans(doc):
                            providers={"anthropic": prov, "deepseek": prov}, router=ModelRouter(cfg))
         tailor(document=doc[1], job_text=JD, prefs=TailoringPrefs(), gateway=gw)
         assert sum(k == "plan" for _, k in prov.calls) == expected_plan_calls
+
+
+def test_default_config_retries_once_without_escalating(doc):
+    prov = Fabricator()
+    result, _ = run(doc, prov)
+    assert result.edits == {}
+    assert [m for m, k in prov.calls if k == "rewrite"] == ["claude-haiku-5-5", "claude-haiku-5-5"]
