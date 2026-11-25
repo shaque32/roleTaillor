@@ -63,8 +63,14 @@ Create the cluster (adjust plan/region/size):
   flyctl mpg create --name roletailor-db$SUFFIX --region $REGION --plan Basic --pg-major-version 16 --volume-size 10
 Attach it / fetch the admin connection string:
   flyctl mpg attach roletailor-db$SUFFIX --app $API   # verify the exact subcommand with 'flyctl mpg --help'
-Then, as the cluster admin, create the roles and extension:
-  psql "\$ADMIN_URL" -v owner_password=... -v app_password=... -f $ROOT/db/bootstrap/managed_roles.sql
+Then, as the cluster admin, create the roles and extension
+(enter the passwords at psql's own prompts, never on a command line, where they would
+land in shell history and the process list; keep the admin password in ~/.pgpass, mode 600,
+and connect with a URL that has no password in it, e.g. through "flyctl mpg proxy"):
+  cd $ROOT && psql "postgresql://<admin-user>@localhost:<port>/<db>"
+    \\prompt 'rt_owner password: ' owner_password
+    \\prompt 'rt_app password: ' app_password
+    \\i db/bootstrap/managed_roles.sql
 Finally set (use "flyctl secrets set --stage --app $API ..."):
   RT_DATABASE_URL            postgresql+psycopg://rt_app:<pw>@<POOLED host>/<db>      (pooled, rt_app)
   RT_MIGRATION_DATABASE_URL  postgresql://rt_owner:<pw>@<DIRECT host>/<db>            (direct, rt_owner; NOT a transaction-mode pooler)

@@ -1,7 +1,16 @@
 -- One-time bootstrap for a managed PostgreSQL cluster (e.g. Fly Managed Postgres).
 -- Run as the cluster admin user, connected to the target (empty) application database:
 --
---   psql "$ADMIN_URL" -v owner_password=... -v app_password=... -f db/bootstrap/managed_roles.sql
+--   psql "postgresql://<admin-user>@localhost:<port>/<db>"   (through "fly mpg proxy"; no password in the
+--                                                          URL; keep it in ~/.pgpass)
+-- A direct connection to a remote host must add sslmode=verify-full.
+--     \prompt 'rt_owner password: ' owner_password
+--     \prompt 'rt_app password: ' app_password
+--     \i db/bootstrap/managed_roles.sql
+--
+-- Set the passwords at psql's prompts, not with -v on the command line, where they would
+-- land in shell history and the process list. Do not pass psql a URL that holds the admin
+-- password either.
 --
 -- Creates rt_owner (runs migrations; RT_MIGRATION_DATABASE_URL, direct connection) and
 -- rt_app (runtime app/worker; RT_DATABASE_URL, pooled), and installs pgvector.
@@ -9,6 +18,9 @@
 --
 -- If the provider's admin user lacks CREATEROLE, create users named rt_owner and rt_app through
 -- the provider's user management instead, then run only the extension/grant statements below.
+-- On that path this script does not set the passwords: build the database URLs from the passwords
+-- the provider holds for those users. If CREATE EXTENSION is refused, enable "vector" through the
+-- provider first.
 -- rt_app must NOT be a superuser, a database/schema owner, or have BYPASSRLS, otherwise
 -- row-level security does not apply to it.
 
