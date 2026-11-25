@@ -3,6 +3,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -65,6 +66,15 @@ class Settings(BaseSettings):
     share_link_max_hours: int = 24 * 30
     celery_task_always_eager: bool = False
     worker_metrics_port: int = 9101  # 0 disables the worker's Prometheus endpoint
+
+    @model_validator(mode="after")
+    def _check_production_config(self) -> Settings:
+        if self.environment not in {"dev", "test"}:
+            if self.secret_key == "dev-insecure-secret-change-me" or len(self.secret_key) < 32:
+                raise ValueError("RT_SECRET_KEY must be set to 32+ characters outside dev/test")
+            if self.storage_backend == "local":
+                raise ValueError("RT_STORAGE_BACKEND must not be 'local' outside dev/test")
+        return self
 
 
 @lru_cache

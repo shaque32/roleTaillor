@@ -37,6 +37,9 @@ celery -A roletailor.worker.celery_app worker -l info
 cd ../frontend && npm install && npm run dev
 ```
 
+## Deploy
+Cloud deployment (Fly.io, Tigris storage, managed Postgres, CI/CD) is described in [docs/deploy.md](docs/deploy.md).
+
 ## Test and evaluate
 ```bash
 cd backend && pytest                    # 117 tests; platform tests need local Postgres

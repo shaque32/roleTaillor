@@ -1,0 +1,81 @@
+# Fly.io config for the RoleTailor API + Celery worker (one image, two process groups).
+# `app` is a placeholder; deploy.sh overrides it with --app roletailor-api[-staging].
+# Image is built remotely from backend/Dockerfile with the repo root as build context
+# (deploy.sh passes --dockerfile explicitly and runs from the repo root).
+app = "roletailor-api"
+primary_region = "iad"
+
+[build]
+  dockerfile = "../../backend/Dockerfile"
+
+[deploy]
+  # Runs in a temporary machine before new machines start; needs RT_MIGRATION_DATABASE_URL
+  # (direct, non-pooled connection: migrate.py takes a session-level advisory lock).
+  release_command = "python db/migrate.py"
+  strategy = "rolling"
+
+[processes]
+  app = "uvicorn roletailor.main:create_app --factory --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips *"
+  # PROMETHEUS_MULTIPROC_DIR is set only for the worker (as in docker-compose): if the API
+  # saw it, prometheus_client would switch to multiprocess mode and /metrics would break.
+  worker = "sh -c 'export PROMETHEUS_MULTIPROC_DIR=/tmp/prometheus && mkdir -p $PROMETHEUS_MULTIPROC_DIR && exec celery -A roletailor.worker.celery_app worker --loglevel=INFO --concurrency=2'"
+
+# Non-secret, environment-neutral values. Per-environment values live in env/*.api.env.
+# Secrets (set with `fly secrets set`): RT_DATABASE_URL, RT_MIGRATION_DATABASE_URL, RT_REDIS_URL,
+# RT_SECRET_KEY, ANTHROPIC_API_KEY, DEEPSEEK_API_KEY, RT_STRIPE_*, AWS_* (Tigris).
+[env]
+  RT_STORAGE_BACKEND = "s3"
+  RT_S3_ENDPOINT_URL = "https://fly.storage.tigris.dev"
+  RT_S3_REGION = "auto"
+  RT_LLM_MODE = "live"
+  RT_LOG_LEVEL = "INFO"
+  RT_WORKER_METRICS_PORT = "9101"
+
+[http_service]
+  processes = ["app"]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 50
+    hard_limit = 100
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/healthz"
+    grace_period = "20s"
+    interval = "15s"
+    timeout = "5s"
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/readyz"
+    grace_period = "30s"
+    interval = "30s"
+    timeout = "5s"
+
+# Prometheus scraping by Fly managed metrics, per process group.
+[[metrics]]
+  port = 8000
+  path = "/metrics"
+  processes = ["app"]
+
+[[metrics]]
+  port = 9101
+  path = "/metrics"
+  processes = ["worker"]
+
+# The first [[vm]] (no processes key) applies to every group not matched by another block.
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"
+  processes = ["app"]
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "2gb"
+  processes = ["worker"]
