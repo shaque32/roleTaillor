@@ -78,6 +78,8 @@ Generations, emitted in the worker after a run:
 |---|---|---|---|
 | `roletailor_workflow_runs_total` | counter (exists) | outcome | every run |
 | `roletailor_workflow_run_seconds` | histogram (exists) | none | every run; measured from when the worker task starts executing, so it excludes time spent waiting in the queue |
+| `roletailor_ocr_jobs_total` | counter | outcome (ready, no_text, timeout, failed, skipped, retried) | every OCR task attempt for a scanned resume |
+| `roletailor_ocr_job_seconds` | histogram, buckets 2,5,10,20,40,80,120,180 | none | every finished OCR task; excludes queue wait |
 | `roletailor_generation_cost_usd` | histogram, buckets 0.005,0.01,0.02,0.03,0.04,0.05,0.06,0.08,0.10,0.15,0.25,0.5,1 | none | completed runs, value `result.total_cost_usd` |
 | `roletailor_generation_failed_cost_usd_total` | counter | none | AI spend of runs that failed or were discarded (from the sink's running total) |
 | `roletailor_validation_planned_blocks_total` | counter | none | completed runs |

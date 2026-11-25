@@ -91,6 +91,14 @@ class Settings(BaseSettings):
     parse_cpu_seconds: int = 60
     max_resume_pdf_pages: int = 20
     max_resume_blocks: int = 3000
+    # OCR of scanned PDFs runs in the worker (never in the upload request), in the same sandbox.
+    ocr_enabled: bool = True
+    ocr_max_pages: int = 6
+    ocr_deadline_seconds: float = 120.0  # budget for all pages inside ocr_pdf_pages
+    ocr_timeout_seconds: float = 150.0  # wall clock for the sandbox child; above the deadline
+    ocr_cpu_seconds: int = 150
+    ocr_memory_limit_mb: int = 768
+    ocr_stale_after_seconds: int = 600  # a resume still "processing" after this reads as failed
     # Job URL fetching
     job_fetch_timeout_seconds: float = 10.0
     job_fetch_total_seconds: float = 25.0  # wall-clock budget for one URL, redirects included

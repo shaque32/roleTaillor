@@ -66,7 +66,8 @@ const versionData = {
   [uid(12)]: { blocks: blocksV2, parent: uid(11), resume: uid(10) },
   [uid(21)]: { blocks: blocksV2.map((b) => ({ ...b, id: "g" + b.id.slice(1) })), parent: null, resume: uid(20) },
 };
-const resumeListItem = (r) => ({ id: r.id, name: r.name, origin: r.origin, created_at: r.created_at, latest_version: [...r.versions].sort((a, b) => b.version_number - a.version_number)[0] ?? null });
+const resumeListItem = (r) => ({ id: r.id, name: r.name, origin: r.origin, created_at: r.created_at, latest_version: [...r.versions].sort((a, b) => b.version_number - a.version_number)[0] ?? null, processing: r.processing ?? null });
+const resumeDetail = (r) => ({ ...r, processing: r.processing ?? null });
 const resumeVersion = (vid) => {
   const d = versionData[vid];
   if (!d) return null;
@@ -211,7 +212,18 @@ const server = http.createServer(async (req, res) => {
     if (parts.length === 1) {
       if (m === "GET") return send(res, 200, resumes.filter((r) => !r.archived_at).map(resumeListItem));
       if (m === "POST") {
-        const name = ctype.includes("multipart") ? (/name="name"\r\n\r\n([^\r]*)/.exec(raw.toString("latin1"))?.[1] || "Uploaded resume") : "Uploaded resume";
+        const text = ctype.includes("multipart") ? raw.toString("latin1") : "";
+        const name = /name="name"\r\n\r\n([^\r]*)/.exec(text)?.[1] || "Uploaded resume";
+        const fileName = (/filename="([^"]*)"/.exec(text)?.[1] || "").toLowerCase();
+        // Scanned PDFs: "scan" in the file name is read in the background, "scan-fail" ends failed, "scan-long" is rejected.
+        if (fileName.endsWith(".pdf") && fileName.includes("scan")) {
+          if (fileName.includes("scan-long")) return err(res, 422, "scanned_pdf_too_long", "This scanned PDF has too many pages (the limit is 10). Please upload a shorter one, or paste the text instead.");
+          const rid = randomUUID(), now = new Date().toISOString();
+          const r = { id: rid, name, origin: "upload", created_at: now, archived_at: null, versions: [], processing: { status: "processing", error: null, started_at: now } };
+          resumes.push(r);
+          scanOutcome(r, fileName.includes("scan-fail") ? "fail" : "ok", 6000);
+          return send(res, 202, { resume: resumeListItem(r), version: null });
+        }
         return send(res, 201, newResume(name, "upload", blocksV1));
       }
     }
@@ -223,9 +235,15 @@ const server = http.createServer(async (req, res) => {
     const r = resumes.find((x) => x.id === b);
     if (!r) return err(res, 404, "not_found", "Resume not found.");
     if (parts.length === 2) {
-      if (m === "GET") return send(res, 200, r);
-      if (m === "PATCH") { r.name = body.name ?? r.name; return send(res, 200, r); }
+      if (m === "GET") return send(res, 200, resumeDetail(r));
+      if (m === "PATCH") { r.name = body.name ?? r.name; return send(res, 200, resumeDetail(r)); }
       if (m === "DELETE") { r.archived_at = new Date().toISOString(); return send(res, 204); }
+    }
+    if (c === "processing" && d === "retry" && m === "POST") {
+      if (r.processing?.status !== "failed") return err(res, 409, "not_retryable", "This resume isn't waiting for a retry.");
+      r.processing = { status: "processing", error: null, started_at: new Date().toISOString() };
+      scanOutcome(r, "ok", 4000);
+      return send(res, 202, resumeDetail(r));
     }
     if (c === "versions" && d) {
       if (parts.length === 4 && m === "GET") { const v = resumeVersion(d); return v ? send(res, 200, v) : err(res, 404, "not_found", "Version not found."); }
@@ -238,6 +256,20 @@ const server = http.createServer(async (req, res) => {
         return send(res, 201, resumeVersion(id));
       }
     }
+  }
+  // Simulates the background worker: after `ms` the scan becomes ready, or fails like an image with no text.
+  function scanOutcome(r, outcome, ms) {
+    setTimeout(() => {
+      if (r.archived_at || r.processing?.status !== "processing") return;
+      if (outcome === "fail") {
+        r.processing = { ...r.processing, status: "failed", error: { code: "ocr_no_text", message: "We couldn't find any text in this scan. Try a clearer copy, a DOCX, or paste the text instead." } };
+        return;
+      }
+      const vid = randomUUID();
+      r.versions.push({ id: vid, version_number: 1, created_at: new Date().toISOString() });
+      versionData[vid] = { blocks: blocksV1, parent: null, resume: r.id };
+      r.processing = null;
+    }, ms);
   }
   function newResume(name, origin, blocks) {
     const rid = randomUUID(), vid = randomUUID(), now = new Date().toISOString();

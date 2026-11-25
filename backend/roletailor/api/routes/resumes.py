@@ -23,6 +23,7 @@ def list_resumes(principal: CurrentPrincipal) -> list[dict]:
 
 @router.post("", status_code=201, dependencies=_UPLOAD_LIMIT)
 def upload_resume(
+    response: Response,
     principal: CurrentPrincipal,
     file: Annotated[UploadFile, File()],
     name: Annotated[str | None, Form(max_length=200)] = None,
@@ -31,7 +32,10 @@ def upload_resume(
     data = file.file.read(limit + 1)
     if len(data) > limit:
         raise AppError(413, "file_too_large", f"Files must be at most {limit} bytes.")
-    return resumes.create_from_upload(principal, data, file.filename, name)
+    result = resumes.create_from_upload(principal, data, file.filename, name)
+    if result["version"] is None:  # a scan: OCR continues in the worker
+        response.status_code = 202
+    return result
 
 
 @router.post("/guided", status_code=201, dependencies=_UPLOAD_LIMIT)
@@ -47,6 +51,11 @@ def create_from_text(body: ResumeTextIn, principal: CurrentPrincipal) -> dict:
 @router.get("/{resume_id}")
 def get_resume(resume_id: UUID, principal: CurrentPrincipal) -> dict:
     return resumes.get_resume(principal, resume_id)
+
+
+@router.post("/{resume_id}/processing/retry", status_code=202, dependencies=_UPLOAD_LIMIT)
+def retry_processing(resume_id: UUID, principal: CurrentPrincipal) -> dict:
+    return resumes.retry_processing(principal, resume_id)
 
 
 @router.patch("/{resume_id}")

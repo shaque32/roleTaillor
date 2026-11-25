@@ -89,6 +89,30 @@ for (const [vpName, vpOpts] of Object.entries(VIEWPORTS)) {
   const upload = page.getByRole("button", { name: /^\s*upload/i }).first();
   if (await upload.count()) { await upload.click(); await page.waitForTimeout(400); await shot(page, "05b-resumes-upload-dialog", { viewportOnly: true }); }
 
+  // Scanned PDFs are read in the background. The mock simulates it: "scan-fail" ends failed after ~6 s.
+  await go(page, "/resumes");
+  const scanUpload = page.getByRole("button", { name: /^\s*upload/i }).first();
+  if (await scanUpload.count()) {
+    await scanUpload.click();
+    await page.setInputFiles('input[type="file"]', { name: "scan-fail.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.1\n%%EOF\n") });
+    await page.getByRole("button", { name: "Upload resume" }).click();
+    if (await page.getByRole("heading", { name: /reading your scan/i }).waitFor({ timeout: 8000 }).then(() => true, () => false)) {
+      await shot(page, "05c-scan-reading", { viewportOnly: true });
+      await page.keyboard.press("Escape");
+      await page.getByText("Reading scan…").first().waitFor({ timeout: 8000 }).catch(() => {});
+      await shot(page, "05d-list-row-reading");
+      await page.getByText("Could not read").first().waitFor({ timeout: 20000 }).catch(() => {});
+      await shot(page, "05e-list-row-failed");
+      // Failed state inside the upload dialog (a second scan that is allowed to fail while the dialog stays open)
+      await page.getByRole("button", { name: /^\s*upload/i }).first().click();
+      await page.setInputFiles('input[type="file"]', { name: "scan-fail.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.1\n%%EOF\n") });
+      await page.getByRole("button", { name: "Upload resume" }).click();
+      await page.getByText("We couldn't read your scan").waitFor({ timeout: 20000 }).catch(() => {});
+      await shot(page, "05f-scan-failed", { viewportOnly: true });
+      await page.keyboard.press("Escape");
+    }
+  }
+
   await go(page, `/resumes/${RESUME_ID}`);
   await shot(page, "06-resume-detail");
   await go(page, "/resumes/new");

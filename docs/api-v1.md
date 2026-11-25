@@ -25,15 +25,20 @@ Rate-limited routes (auth, workflow creation, iterations) return `429 rate_limit
 AI routes return `428 consent_required` until the user grants `ai_processing` consent.
 
 ## Resumes
+Every resume object carries `processing`: `null` when the resume is ready, otherwise
+`{status: "processing" | "failed", error: null | {code, message}, started_at}`. Error codes:
+`ocr_no_text`, `ocr_failed`, `ocr_timeout`, `ocr_unavailable` (the job could not be queued); `message`
+is user-facing. A scan still `processing` after 10 minutes is reported as failed with `ocr_timeout`.
 | Method | Path | Body | Returns |
 |---|---|---|---|
-| GET | /resumes | | `[{id, name, origin, created_at, latest_version}]` |
-| POST | /resumes | multipart `file` (DOCX/PDF), `name` | `{resume, version}` where version has `blocks`, `findings`, `layout_metadata` |
+| GET | /resumes | | `[{id, name, origin, created_at, processing, latest_version}]`. `latest_version` is null while a scan is being read or when reading it failed |
+| POST | /resumes | multipart `file` (DOCX/PDF), `name` | `201 {resume, version}` where version has `blocks`, `findings`, `layout_metadata`. A scanned PDF (no text layer) answers `202 {resume, version: null}`: the resume has `processing.status = "processing"` and OCR runs in the background; poll `GET /resumes/{id}` until `processing` is null (the version then exists) or `processing.status` is `failed`. Scans longer than 6 pages: `422 scanned_pdf_too_long` |
 | POST | /resumes/text | `{text, name?}` | `{resume, version}`. Pasted plain text (at least 200 non-whitespace characters, at most 50,000 characters in total; `422 resume_text_too_short`, `413 resume_text_too_long`). No source file is stored (`source_file_id` null); the version has `source_format: "text"` and `t{n}` block ids, and exports render through the structured ATS template |
 | POST | /resumes/guided | `{name, contact, sections:[{kind, title, items:[...]}]}` | `{resume, version}`. `contact` is the `Contact` model (`full_name` required). Items by section kind: experience `{company,title,location,start,end,bullets[]}`, education `{institution,degree,field,start,end,details}`, certifications `{name,issuer,date}`, projects `{name,link,description,bullets[]}`, anything else `{text}` (a bare string is accepted as `{text}`). The form is rendered to DOCX and re-parsed, so version blocks use DOCX ids (`p{n}`) |
-| GET | /resumes/{id} | | resume with `versions[]` |
+| GET | /resumes/{id} | | resume with `versions[]` (empty while a scan is processing) |
+| POST | /resumes/{id}/processing/retry | | `202`, the resume as `GET /resumes/{id}`. Re-queues OCR of a scan whose `processing.status` is `failed`; otherwise `409 not_retryable` |
 | PATCH | /resumes/{id} | `{name}` | resume |
-| DELETE | /resumes/{id} | | 204 (archives) |
+| DELETE | /resumes/{id} | | 204 (archives; also for a resume that is processing or failed) |
 | GET | /resumes/{id}/versions/{vid} | | version |
 | POST | /resumes/{id}/versions/{vid}/restore | | new version copied from `vid` |
 

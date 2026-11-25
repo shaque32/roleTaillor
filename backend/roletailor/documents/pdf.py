@@ -9,6 +9,7 @@ import shutil
 import signal
 import subprocess
 import tempfile
+from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 
@@ -18,7 +19,7 @@ from pypdf.errors import PdfReadError
 from . import ocr
 from ._analysis import looks_like_heading, missing_section_findings, strip_bullet
 from ._ooxml import strip_external_relationships
-from .errors import InvalidDocument, OcrError, PdfConversionError
+from .errors import InvalidDocument, OcrError, OcrTimeout, PdfConversionError
 from .model import Block, ParsedDocument
 from .pdf_layout import continues, paragraph_is_heading, pdf_paragraphs
 
@@ -89,14 +90,33 @@ def count_pdf_pages(pdf: bytes) -> int:
     return len(_reader(pdf).pages)
 
 
-def read_pdf_text(data: bytes) -> ParsedDocument:
+@dataclass(frozen=True)
+class OcrOptions:
+    """How a scanned PDF is read. `enabled=False` never touches Tesseract."""
+
+    enabled: bool = True
+    max_pages: int = 6
+    deadline: float = 45.0
+
+
+# layout_metadata["ocr_outcome"] on a scanned PDF that OCR was tried on but yielded no blocks.
+# Absent when OCR was disabled, or when it succeeded.
+OCR_NO_TEXT = "no_text"  # Tesseract ran on every page and found nothing
+OCR_TIMEOUT = "timeout"  # a page or the whole read ran out of time
+OCR_FAILED = "failed"  # too many pages, unreadable pages, Tesseract missing or crashed
+
+
+def read_pdf_text(data: bytes, *, ocr: OcrOptions | bool = True) -> ParsedDocument:
     """Extract text lines from a PDF as `text_line` blocks (`l0`, `l1`, ...).
 
     Lines come from the geometric reader (`pdf_layout`), so block ids are the same ones the
     in-place writer (`pdf_writer`) uses. Visually wrapped lines are merged back into one block
     when the break looks like a wrap rather than a new item. Bullet glyphs are stripped and
     recorded as `is_list_item`. PDFs with text can be edited in place; scanned ones need OCR.
+    `ocr=False` (or `OcrOptions(enabled=False)`) leaves scanned PDFs unread, with the
+    `scanned_pdf_needs_ocr` finding, without starting Tesseract.
     """
+    options = OcrOptions(enabled=ocr) if isinstance(ocr, bool) else ocr
     reader = _reader(data)
     paragraphs = pdf_paragraphs(data)
     blocks = [
@@ -107,7 +127,7 @@ def read_pdf_text(data: bytes) -> ParsedDocument:
     ]
 
     if not blocks:
-        return _read_scanned(data, reader)
+        return _read_scanned(data, reader, options)
     return ParsedDocument(
         source_format="pdf",
         blocks=blocks,
@@ -117,35 +137,56 @@ def read_pdf_text(data: bytes) -> ParsedDocument:
     )
 
 
-def _read_scanned(data: bytes, reader: PdfReader) -> ParsedDocument:
+def _read_scanned(data: bytes, reader: PdfReader, options: OcrOptions) -> ParsedDocument:
     """A PDF with no text layer: read it with OCR when Tesseract is available.
 
     OCR'd blocks have no reusable fonts or exact geometry, so they are never edited in
     place; the tailored resume is rendered through the ATS template. Without OCR (binary
     missing, too many pages, or a Tesseract failure) the upload keeps the
-    `scanned_pdf_needs_ocr` finding and no blocks.
+    `scanned_pdf_needs_ocr` finding and no blocks. When OCR was tried, the reason is in
+    `layout_metadata["ocr_outcome"]` (see OCR_NO_TEXT, OCR_TIMEOUT, OCR_FAILED), so a caller
+    in another process (the sandbox child has no log) can tell "found nothing" from "broke".
     """
     blocks: list[Block] = []
     findings: list[dict] = []
-    if reader.pages and ocr.ocr_available():
-        try:
-            pages = ocr.ocr_pdf_pages(data)
-        except (OcrError, InvalidDocument) as exc:
-            log.warning("OCR failed, leaving the PDF unread: %s", exc)
+    outcome: str | None = None
+    if options.enabled and reader.pages:
+        if not ocr.ocr_available():
+            outcome = OCR_FAILED
         else:
-            blocks = _ocr_blocks(pages)
-            if blocks:
-                findings = [*ocr.ocr_findings(pages), *missing_section_findings(blocks)]
+            try:
+                pages = ocr.ocr_pdf_pages(data, max_pages=options.max_pages, deadline=options.deadline)
+            except OcrTimeout as exc:
+                log.warning("OCR timed out, leaving the PDF unread: %s", exc)
+                outcome = OCR_TIMEOUT
+            except (OcrError, InvalidDocument) as exc:
+                log.warning("OCR failed, leaving the PDF unread: %s", exc)
+                outcome = OCR_FAILED
+            else:
+                blocks = _ocr_blocks(pages)
+                if blocks:
+                    findings = [*ocr.ocr_findings(pages), *missing_section_findings(blocks)]
+                else:
+                    outcome = OCR_NO_TEXT
     if not blocks:
         findings = [{"code": "scanned_pdf_needs_ocr", "detail": (
             "No extractable text; the PDF looks scanned and needs OCR")}]
     layout = _pdf_layout(reader, len(blocks))
     if blocks:
         layout["ocr"] = True
+        layout["ocr_mean_confidence"] = _mean_confidence(pages)
+    elif outcome:
+        layout["ocr_outcome"] = outcome
     return ParsedDocument(
         source_format="pdf", blocks=blocks, layout_metadata=layout, findings=findings,
         supports_in_place_edit=False,
     )
+
+
+def _mean_confidence(pages: list[ocr.OcrPage]) -> float:
+    weights = [(len(" ".join(p.lines).split()), p.mean_confidence) for p in pages]
+    total = sum(w for w, _ in weights)
+    return round(sum(w * c for w, c in weights) / total, 1) if total else 0.0
 
 
 def merge_text_lines(lines: list[str]) -> list[tuple[str, bool]]:

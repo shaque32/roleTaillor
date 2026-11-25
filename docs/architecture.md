@@ -103,8 +103,35 @@ than half would be lost, all edits are kept and the result is rendered through t
 template. Generated versions record `content.render = {mode, fallback_reason}`.
 
 Scanned PDFs (no text layer) are read with Tesseract through `documents/ocr.py` (about 2 s per
-page, at most 6 pages). They carry the findings `ocr_applied` and, under 70% confidence,
-`ocr_low_confidence`, and are always rendered through the template.
+page), in the Celery worker rather than in the upload request. `POST /resumes` parses every
+upload in the sandbox with OCR off. A PDF that comes back without text and with the
+`scanned_pdf_needs_ocr` finding is stored, and the resume is created with
+`processing_status = 'processing'`, no version, and `processing_file_id` pointing at the stored
+file; the request answers `202`. A scan of more than `RT_OCR_MAX_PAGES` (6) pages is refused with
+`422 scanned_pdf_too_long`, and with `RT_OCR_ENABLED=false` scans keep the old behaviour (a
+version without blocks, flagged `scanned_pdf_needs_ocr`). After commit the API enqueues
+`roletailor.worker.tasks.ocr_resume`; if the broker is down the resume is marked failed with
+`ocr_unavailable` and can be retried.
+
+The task (`services/resume_ocr.py`) locks the resume row, skips it unless it is still
+`processing`, not archived and without a version (so redelivery under `acks_late` is harmless),
+reads the stored file and runs the sandbox again with OCR on (`RT_OCR_*` limits: 120 s budget
+for all pages inside `ocr_pdf_pages`, 150 s wall clock and CPU for the child, 768 MB). No
+transaction is open while OCR runs. The sandbox is still the only place the PDF is parsed. The
+child cannot log, so `read_pdf_text` records why a scan yielded no blocks in
+`layout_metadata["ocr_outcome"]`: `no_text` (Tesseract ran and found nothing), `timeout` (page
+or whole-read limit) or `failed`; the parent maps a wall-clock or CPU kill to `timeout` too. On
+success one tx inserts version 1 (`source_file_id` is the upload), clears the four processing
+columns and audits `resume.ocr_completed` (page count and mean confidence, never text). On
+failure the resume keeps `processing_file_id` and stores `processing_error`
+(`ocr_no_text`, `ocr_timeout`, `ocr_failed`); `POST /resumes/{id}/processing/retry` re-queues it.
+Infrastructure errors (storage, database, a busy parser) are retried by Celery twice with
+backoff, then become `ocr_failed`. A row still `processing` after `RT_OCR_STALE_AFTER_SECONDS`
+(a lost task) is reported as failed with `ocr_timeout` at read time, with no write, and may be
+retried. The worker image is the backend image, which installs Tesseract; a worker without it
+fails every scan with `ocr_failed`. Worker metrics: `roletailor_ocr_jobs_total{outcome}` and
+`roletailor_ocr_job_seconds`. OCR'd versions carry the findings `ocr_applied` and, under 70%
+confidence, `ocr_low_confidence`, and are always rendered through the template.
 
 Licensing: the PDF stack is pdfplumber/pdfminer.six (MIT), pikepdf (MPL-2.0), fontTools (MIT),
 reportlab (BSD), pypdfium2 (Apache-2.0/BSD) and Tesseract (Apache-2.0). PyMuPDF and Ghostscript

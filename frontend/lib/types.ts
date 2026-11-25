@@ -132,12 +132,20 @@ export interface ResumeVersion extends ResumeVersionSummary {
   layout_metadata: Record<string, unknown>;
 }
 
+/** Set while a scanned PDF is being read in the background (or after that failed). `null` on a resume means it is ready. */
+export interface ResumeProcessing {
+  status: "processing" | "failed";
+  error: { code: string; message: string } | null;
+  started_at: ISODate;
+}
+
 export interface ResumeListItem {
   id: UUID;
   name: string;
   origin: ResumeOrigin;
   created_at: ISODate;
   latest_version: ResumeVersionSummary | null;
+  processing: ResumeProcessing | null;
 }
 
 export interface ResumeDetail {
@@ -147,11 +155,18 @@ export interface ResumeDetail {
   created_at: ISODate;
   archived_at?: ISODate | null;
   versions: ResumeVersionSummary[];
+  processing: ResumeProcessing | null;
 }
 
 export interface ResumeWithVersion {
   resume: ResumeListItem | ResumeDetail;
   version: ResumeVersion;
+}
+
+/** POST /resumes: 201 with a version, or 202 with `version: null` for a scanned PDF still being read. */
+export interface ResumeUploadResult {
+  resume: ResumeListItem | ResumeDetail;
+  version: ResumeVersion | null;
 }
 
 /* Guided builder */

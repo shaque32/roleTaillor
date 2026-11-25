@@ -15,6 +15,10 @@ class OcrError(RuntimeError):
     """OCR could not run (Tesseract missing, crashed, timed out) or the input is too large."""
 
 
+class OcrTimeout(OcrError):
+    """OCR ran out of time: a Tesseract call exceeded its limit or the whole read its budget."""
+
+
 class PdfInPlaceUnsupported(RuntimeError):
     """An edit cannot be applied to the PDF faithfully; the caller should re-render via a template."""
 

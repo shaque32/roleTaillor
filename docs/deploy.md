@@ -64,6 +64,8 @@ Secrets live only in Fly, and in GitHub as a deploy token. They are never commit
 | `RT_STRIPE_SECRET_KEY`, `RT_STRIPE_WEBHOOK_SECRET`, `RT_STRIPE_SUBSCRIPTION_PRICE_ID` | api | Stripe dashboard (use test mode for staging) |
 | `FLY_API_TOKEN` | GitHub environments `staging` and `prod` | `fly tokens create deploy -a roletailor-api` (one token for each app set, or an org deploy token) |
 
+OCR of scanned PDFs runs in the worker process group, which needs Tesseract: it is the same image as the API, which installs it. Tune it with `RT_OCR_*` (see `.env.example`); each OCR child may use `RT_OCR_MEMORY_LIMIT_MB` (768) and the worker machine has 2 GB with concurrency 2.
+
 To rotate a secret, run `fly secrets set NAME=value -a <app>`. This restarts the machines with the new value. For the database passwords, run `ALTER ROLE ... PASSWORD` first, then update both URLs.
 
 ## First-time setup (one environment)
@@ -105,6 +107,7 @@ Repeat for `prod` with the Basic Postgres plan and live Stripe keys.
 
 - Migrations are forward only. Each `db/migrations/NNN_*.sql` file manages its own transaction. They are recorded in `public.schema_migrations` and serialised with an advisory lock.
 - Old and new code run side by side during a rolling deploy, so keep migrations backwards compatible: add columns before the code that uses them ships, and drop them in a later release.
+- Migration 006 adds the `processing_*` columns to `resumes`. It is additive, so old API code keeps working; deploy the worker image with the API, since only the new worker consumes `ocr_resume` tasks (an old worker would reject the unknown task and the resume would read as failed after `RT_OCR_STALE_AFTER_SECONDS`).
 - If a migration fails, the release stops before any machine is replaced. Fix the migration in a new commit and deploy again.
 
 ## Rollback
