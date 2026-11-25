@@ -95,7 +95,7 @@ else
     # Never leave the two apps holding different values: a later run could not tell.
     flyctl secrets unset --stage --app "$API" RT_PROXY_SHARED_SECRET || true
     flyctl secrets unset --stage --app "$WEB" API_PROXY_SECRET || true
-    echo "ERROR: could not set API_PROXY_SECRET on $WEB, so the proxy secret was removed from both apps." >&2
+    echo "ERROR: could not set API_PROXY_SECRET on $WEB, so removing the proxy secret from both apps was attempted." >&2
     echo "Fix access to $WEB and run this script again. If the removal above also failed, first run:" >&2
     echo "  flyctl secrets unset --stage --app $API RT_PROXY_SHARED_SECRET" >&2
     echo "  flyctl secrets unset --stage --app $WEB API_PROXY_SECRET" >&2

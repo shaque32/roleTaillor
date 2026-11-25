@@ -290,3 +290,28 @@ def test_fetch_tries_the_next_vetted_address_and_sends_ascii_host(monkeypatch):
     with pytest.raises(job_fetch.JobFetchError, match="non-public"):
         job_fetch.fetch_job_page("https://jobs.example.com/", timeout=1, max_bytes=1000,
                                  transport=httpx.MockTransport(handler))
+
+
+def test_fetch_keeps_cookies_by_host_name_across_addresses(monkeypatch):
+    """Pinning sits below the client, so a cookie set before a redirect is replayed on the
+    next hop even when that hop lands on another vetted address."""
+    answers = iter([["93.184.216.34"], ["93.184.216.35"], ["93.184.216.36"]])
+    monkeypatch.setattr(job_fetch, "_resolve", lambda host, port: next(answers))
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.url.host, request.url.path, request.headers.get("cookie", "")))
+        if request.url.path == "/job":
+            return httpx.Response(302, headers=[
+                ("location", "/check"), ("set-cookie", "site=1; Domain=example.com; Path=/")])
+        if request.url.path == "/check":
+            return httpx.Response(302, headers=[("location", "/final"), ("set-cookie", "host=2; Path=/")])
+        return httpx.Response(200, text=f"<html><body><main><p>{LONG}</p></main></body></html>",
+                              headers={"content-type": "text/html"})
+
+    job_fetch.fetch_job_page("https://jobs.example.com/job", timeout=1, max_bytes=100_000,
+                             transport=httpx.MockTransport(handler))
+    assert [(host, path) for host, path, _ in seen] == [
+        ("93.184.216.34", "/job"), ("93.184.216.35", "/check"), ("93.184.216.36", "/final")]
+    assert seen[1][2] == "site=1"
+    assert sorted(seen[2][2].split("; ")) == ["host=2", "site=1"]

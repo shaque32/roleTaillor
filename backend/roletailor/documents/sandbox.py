@@ -107,11 +107,11 @@ def parse_untrusted(data: bytes, kind: str, *, timeout: float, memory_mb: int, c
         try:
             out, _ = proc.communicate(data, timeout=timeout)
         except subprocess.TimeoutExpired as exc:
-            _kill_group(proc)
             raise ParseFailed("parsing timed out") from exc
         finally:
-            if proc.poll() is None:
-                _kill_group(proc)
+            # Always, even after a clean exit: a parser that died on a signal can leave
+            # Tesseract running, and `poll()` only knows about the parser itself.
+            _kill_group(proc)
     finally:
         _SLOTS.release()
     if proc.returncode == EXIT_REJECTED:
@@ -132,7 +132,9 @@ def _kill_group(proc: subprocess.Popen) -> None:
     """Kill the child and anything it started (Tesseract), then reap it."""
     try:
         os.killpg(proc.pid, signal.SIGKILL)
-    except (ProcessLookupError, PermissionError):
+    except ProcessLookupError:
+        pass  # the whole group is already gone
+    except PermissionError:
         proc.kill()
     proc.wait()
 
