@@ -39,7 +39,11 @@ from roletailor.documents import read_docx  # noqa: E402
 from roletailor.pipeline import scoring  # noqa: E402
 from roletailor.pipeline.orchestrator import TailoringPrefs, tailor  # noqa: E402
 from roletailor.pipeline.text import bare_numbers, contains_term  # noqa: E402
-from tests.fixtures.make_fixtures import make_classic_resume, make_table_resume  # noqa: E402
+from roletailor.redaction import redact  # noqa: E402
+from tests.fixtures.make_fixtures import (  # noqa: E402
+    make_classic_resume,
+    make_table_resume,
+)
 
 RESUMES = {"classic": make_classic_resume, "table": make_table_resume}
 
@@ -142,7 +146,8 @@ def main() -> int:
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     report = {"mode": "live" if args.live else "offline", "stage_tiers": config["stages"],
               "results": results}
-    (out_dir / f"{stamp}.json").write_text(json.dumps(report, indent=2))
+    # Reports hold model output and error text; mask any credential before it touches disk.
+    (out_dir / f"{stamp}.json").write_text(redact(json.dumps(report, indent=2)))
     return 0 if all(r["passed"] for r in results) else 1
 
 

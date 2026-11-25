@@ -5,7 +5,12 @@ __pycache__/
 .ruff_cache/
 .mypy_cache/
 .data/
+# Secrets never go in git. Only the key-free .env.example templates are tracked.
 .env
+.env.*
+!.env.example
+*.pem
+*.key
 node_modules/
 .next/
 evals/reports/

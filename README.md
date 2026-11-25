@@ -40,6 +40,13 @@ cd ../frontend && npm install && npm run dev
 ## Deploy
 Cloud deployment (Fly.io, Tigris storage, managed Postgres, CI/CD) is described in [docs/deploy.md](docs/deploy.md).
 
+## Keeping keys out of the repo
+- Real keys go only in `.env` (ignored by git) locally and in `fly secrets` in the cloud. `.env.example` is a template and must never hold a real value.
+- CI runs gitleaks over the full git history on every push and PR, and fails on any match. It also fails if an env file other than `.env.example` is tracked.
+- Optional local guard: `pip install pre-commit && pre-commit install` blocks a commit that contains a key.
+- Logs and eval reports pass through `roletailor.redaction.redact`, which masks key values before they are written.
+- If a key is ever committed, rotate it in the provider console first. Removing it from git does not make it safe again.
+
 ## Test and evaluate
 ```bash
 cd backend && pytest                    # 117 tests; platform tests need local Postgres
