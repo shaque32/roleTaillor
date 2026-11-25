@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useCallback, useId, useLayoutEffect, useRef, useState, type InputHTMLAttributes, type TextareaHTMLAttributes } from "react";
+import { forwardRef, useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type InputHTMLAttributes, type TextareaHTMLAttributes } from "react";
 import { AlertCircle, Eye, EyeOff } from "lucide-react";
 import { cx } from "@/lib/format";
 import { IconButton } from "./Button";
@@ -156,6 +156,19 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function 
     el.style.overflowY = el.scrollHeight > max ? "auto" : "hidden";
   }, [autoGrow, maxRows]);
   useLayoutEffect(grow, [grow, value]);
+  useEffect(() => {
+    const el = inner.current;
+    if (!el || !autoGrow || typeof ResizeObserver === "undefined") return;
+    let width = el.clientWidth;
+    const ro = new ResizeObserver(() => {
+      if (el.clientWidth !== width) {
+        width = el.clientWidth;
+        grow();
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [grow, autoGrow]);
   return (
     <FieldShell id={id} label={label} hint={hint} error={error} optional={optional} className={className}>
       <textarea

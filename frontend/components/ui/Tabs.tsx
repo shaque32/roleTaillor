@@ -79,9 +79,9 @@ export function Tabs({
 }
 
 export function TabPanel({ id, active, children, className }: { id: string; active: boolean; children: React.ReactNode; className?: string }) {
-  if (!active) return null;
+  // Inactive panels stay mounted (so their state survives tab switches) but hidden from view and the a11y tree.
   return (
-    <div role="tabpanel" id={`panel-${id}`} aria-labelledby={`tab-${id}`} tabIndex={0} className={cx("rounded-lg", focusRing, className)}>
+    <div role="tabpanel" id={`panel-${id}`} aria-labelledby={`tab-${id}`} hidden={!active} tabIndex={active ? 0 : -1} className={cx("rounded-lg", focusRing, className)}>
       {children}
     </div>
   );

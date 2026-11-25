@@ -85,7 +85,7 @@ function Listbox<V extends string>({
 
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
-  const [pos, setPos] = useState<{ top?: number; bottom?: number; left: number; width: number }>({ left: 0, width: 0 });
+  const [pos, setPos] = useState<{ top?: number; bottom?: number; left: number; width: number; maxHeight?: number }>({ left: 0, width: 0 });
   const triggerRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const typed = useRef({ text: "", timer: 0 as unknown as ReturnType<typeof setTimeout> });
@@ -100,8 +100,9 @@ function Listbox<V extends string>({
     const width = variant === "pill" ? Math.max(r.width, 224) : r.width;
     const left = Math.max(8, Math.min(r.left, window.innerWidth - width - 8));
     const below = window.innerHeight - r.bottom;
-    if (below < 300 && r.top > below) setPos({ bottom: window.innerHeight - r.top + 4, left, width });
-    else setPos({ top: r.bottom + 4, left, width });
+    const room = (px: number) => Math.min(288, Math.max(96, px - 4 - 8)); // gap to trigger + viewport margin
+    if (below < 300 && r.top > below) setPos({ bottom: window.innerHeight - r.top + 4, left, width, maxHeight: room(r.top) });
+    else setPos({ top: r.bottom + 4, left, width, maxHeight: room(below) });
   }, [variant]);
 
   const openAt = useCallback(
@@ -265,7 +266,7 @@ function Listbox<V extends string>({
         </span>
         <ChevronDown className={cx("h-4 w-4 shrink-0 transition-transform", isPill ? "opacity-70" : "text-ink-muted", open && "rotate-180")} aria-hidden />
       </button>
-      {name && <input type="hidden" name={name} value={current ?? ""} />}
+      {name && <input type="hidden" name={name} value={current ?? ""} disabled={disabled} />}
       {open && (
         <ul
           ref={listRef}
@@ -274,7 +275,7 @@ function Listbox<V extends string>({
           tabIndex={-1}
           aria-labelledby={label ? labelId : undefined}
           aria-label={label ? undefined : ariaLabel}
-          style={{ position: "fixed", top: pos.top, bottom: pos.bottom, left: pos.left, width: pos.width }}
+          style={{ position: "fixed", top: pos.top, bottom: pos.bottom, left: pos.left, width: pos.width, maxHeight: pos.maxHeight }}
           className="z-50 max-h-72 overflow-auto rounded-xl bg-white p-1 text-ink shadow-pop ring-1 ring-slate-900/10 animate-fade-in"
         >
           {options.map((o, i) => (

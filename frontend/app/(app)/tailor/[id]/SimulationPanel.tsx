@@ -34,18 +34,20 @@ export function SimulationPanel({ feedback, score }: { feedback: HiringManagerFe
     <Section title="Hiring-manager view">
       <div className="space-y-6">
         <Alert tone="warning">This is an AI simulation, not a prediction of hiring outcomes.</Alert>
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-4xl font-semibold tabular-nums" aria-label={`Simulation score ${formatScore(overall)}`}>
+            {formatScore(overall)}
+          </span>
+          {feedback && (
+            <Badge tone={LIKELIHOOD_TONE[feedback.interview_likelihood] ?? "neutral"}>
+              Simulated interview likelihood: <span className="capitalize">{feedback.interview_likelihood}</span>
+            </Badge>
+          )}
+        </div>
         {!feedback ? (
           <p className="text-sm text-ink-muted">No simulated feedback for this version.</p>
         ) : (
           <>
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="text-4xl font-semibold tabular-nums" aria-label={`Simulation score ${formatScore(overall)}`}>
-                {formatScore(overall)}
-              </span>
-              <Badge tone={LIKELIHOOD_TONE[feedback.interview_likelihood] ?? "neutral"}>
-                Simulated interview likelihood: <span className="capitalize">{feedback.interview_likelihood}</span>
-              </Badge>
-            </div>
             <div className="grid gap-5 sm:grid-cols-2">
               <ScoreBar label="Technical alignment" value={feedback.technical_alignment} />
               <ScoreBar label="Leadership" value={feedback.leadership} />

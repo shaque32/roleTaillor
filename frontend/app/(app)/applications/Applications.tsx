@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Bell, Briefcase, Calendar, FileText, Pencil, Plus, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useResource } from "@/lib/hooks";
@@ -104,6 +104,10 @@ export function Applications() {
   const all = apps.data ?? [];
   const present = STATUSES.filter((st) => all.some((a) => a.status === st.value));
   const filter = present.some((st) => st.value === statusFilter) ? statusFilter : "";
+  // Don't let a stale filter re-activate if its status reappears later.
+  useEffect(() => {
+    if (apps.data && statusFilter && filter === "") setStatusFilter("");
+  }, [apps.data, statusFilter, filter]);
   const rows = all.filter((a) => !filter || a.status === filter);
   const current = editing && editing !== "new" ? editing : null;
   const today = new Date().toISOString().slice(0, 10);

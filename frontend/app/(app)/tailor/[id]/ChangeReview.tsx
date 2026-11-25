@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { RefreshCw, Sparkles } from "lucide-react";
 import { api } from "@/lib/api";
 import { cx } from "@/lib/format";
@@ -31,6 +31,19 @@ export function ChangeReview({
   const [bulk, setBulk] = useState(false);
   const [instructions, setInstructions] = useState("");
   const [regenBusy, setRegenBusy] = useState(false);
+
+  // Latest props for the bulk loop, which outlives the render it started in.
+  const changesRef = useRef(changes);
+  const mounted = useRef(true);
+  useEffect(() => {
+    changesRef.current = changes;
+  }, [changes]);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   const counts = {
     all: changes.length,
@@ -63,19 +76,32 @@ export function ChangeReview({
   }
 
   async function acceptRemaining() {
-    const todo = changes.filter((c) => c.decision === "pending");
+    const todo = changes.filter((c) => c.decision === "pending").map((c) => c.id);
     setBulk(true);
     let done = 0;
+    let skipped = 0;
+    let failed = false;
     try {
-      for (const c of todo) {
-        if (await decide(c, "accepted", { quiet: true })) done++;
-        else break;
+      for (const id of todo) {
+        if (!mounted.current) return;
+        // Re-read the current decision: the user may have changed it since the loop started.
+        const current = changesRef.current.find((x) => x.id === id);
+        if (!current || current.decision !== "pending") {
+          skipped++;
+          continue;
+        }
+        if (await decide(current, "accepted", { quiet: true })) done++;
+        else {
+          failed = true;
+          break;
+        }
       }
     } finally {
-      setBulk(false);
+      if (mounted.current) setBulk(false);
     }
-    if (done === todo.length) toast.success(`Accepted ${done} rewrite${done === 1 ? "" : "s"}.`);
-    else toast.error(new Error(`Accepted ${done} of ${todo.length} rewrites. Something went wrong, please try again.`));
+    if (!mounted.current) return;
+    if (!failed) toast.success(`Accepted ${done} rewrite${done === 1 ? "" : "s"}.`);
+    else toast.error(new Error(`Accepted ${done} of ${todo.length - skipped} rewrites. Something went wrong, please try again.`));
   }
 
   function toggleSelect(id: string) {

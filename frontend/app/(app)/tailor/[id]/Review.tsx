@@ -197,7 +197,7 @@ export function Review() {
           <ResultSummary
             generated={latest}
             before={detail.scores_before}
-            onApproved={(g) => setDetail((d) => (d?.latest ? { ...d, latest: { ...d.latest, ...g } } : d))}
+            onApproved={(g) => setDetail((d) => (d?.latest && d.latest.id === g.id ? { ...d, latest: { ...d.latest, ...g } } : d))}
           />
           <div>
             <Tabs

@@ -39,6 +39,7 @@ export function TailorForm({ initialVersionId, defaultPageLimit = 2 }: { initial
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<React.ReactNode>(null);
+  const [jobError, setJobError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [payOpen, setPayOpen] = useState(false);
   const [consentOpen, setConsentOpen] = useState(false);
@@ -96,15 +97,16 @@ export function TailorForm({ initialVersionId, defaultPageLimit = 2 }: { initial
 
   async function start(acceptPaid = false) {
     setError(null);
+    setJobError(null);
     setNotice(null);
     if (!versionId) return setError("Choose a resume to tailor.");
     if (!trimmed) {
       jobRef.current?.focus();
-      return setError("Paste the job link or description.");
+      return setJobError("Paste the job link or description.");
     }
     if (!isUrl && trimmed.length < MIN_DESCRIPTION) {
       jobRef.current?.focus();
-      return setError("Paste the full job description (at least a few sentences).");
+      return setJobError("Paste the full job description (at least a few sentences).");
     }
 
     setBusy(true);
@@ -204,7 +206,11 @@ export function TailorForm({ initialVersionId, defaultPageLimit = 2 }: { initial
             label="Job link or description"
             placeholder="Paste a link (https://…) or the full job description"
             value={jobInput}
-            onChange={(e) => setJobInput(e.target.value)}
+            onChange={(e) => {
+              setJobInput(e.target.value);
+              setJobError(null);
+            }}
+            error={jobError ?? undefined}
           />
           <p aria-live="polite" className="-mt-2 flex items-center gap-1.5 text-sm text-ink-muted">
             {!trimmed ? (

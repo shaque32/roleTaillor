@@ -179,8 +179,11 @@ const server = http.createServer(async (req, res) => {
     if (b === "logout") return send(res, 204);
     if (b === "login" || b === "register") {
       if (b === "register" || body.email) {
-        const u = b === "register" ? { ...user, email: body.email || user.email, full_name: body.full_name || user.full_name } : user;
-        return send(res, b === "register" ? 201 : 200, { token: "demo-token-" + randomUUID(), expires_at: ahead(14), user: u, organization });
+        if (b === "register") {
+          if (body.email) user.email = body.email;
+          if (body.full_name) user.full_name = body.full_name;
+        }
+        return send(res, b === "register" ? 201 : 200, { token: "demo-token-" + randomUUID(), expires_at: ahead(14), user, organization });
       }
       return err(res, 401, "invalid_credentials", "Bad credentials.");
     }
@@ -312,4 +315,5 @@ const server = http.createServer(async (req, res) => {
   return err(res, 404, "not_found", `No mock for ${m} ${p}`);
 });
 
-server.listen(PORT, () => console.log(`RoleTailor mock API on ${ORIGIN}/v1 (new user: ${NEW_USER})`));
+const HOST = process.env.HOST || "127.0.0.1";
+server.listen(PORT, HOST, () => console.log(`RoleTailor mock API on ${ORIGIN}/v1 (new user: ${NEW_USER})`));

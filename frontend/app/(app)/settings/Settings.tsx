@@ -303,7 +303,7 @@ function DataCard() {
             <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
               AI processing consent
               {hint === "granted" && <Badge tone="green">Given on this device</Badge>}
-              {hint === "declined" && <Badge tone="amber">Not given</Badge>}
+              {hint === "declined" && <Badge tone="amber">Not given on this device</Badge>}
             </p>
             <p className="text-sm text-ink-muted">Required for tailoring. Withdrawing stops new AI processing of your resumes.</p>
           </div>
@@ -313,11 +313,9 @@ function DataCard() {
                 Give consent
               </Button>
             )}
-            {hint !== "declined" && (
-              <Button variant="secondary" onClick={() => setWithdrawOpen(true)} disabled={consentBusy}>
-                Withdraw consent
-              </Button>
-            )}
+            <Button variant="secondary" onClick={() => setWithdrawOpen(true)} disabled={consentBusy}>
+              Withdraw consent
+            </Button>
           </div>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-4 border-t border-line pt-6">

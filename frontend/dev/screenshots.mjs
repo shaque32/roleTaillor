@@ -103,6 +103,12 @@ for (const [vpName, vpOpts] of Object.entries(VIEWPORTS)) {
   await shot(page, "10-tailor-review");
   await page.evaluate(() => window.scrollTo(0, 0));
   await shot(page, "10a-review-top-export-bar", { viewportOnly: true });
+  for (const [tabName, file] of [["Missing keywords", "10e-review-keywords"], ["Hiring-manager view", "10f-review-hiring-manager"]]) {
+    const tab = page.getByRole("tab", { name: new RegExp(tabName, "i") });
+    if (await tab.count()) { await tab.click(); await settle(page); await shot(page, file); }
+  }
+  const changesTab = page.getByRole("tab", { name: /^changes/i });
+  if (await changesTab.count()) { await changesTab.click(); await settle(page); }
   const changes = page.getByRole("heading", { name: /review changes/i }).first();
   if (await changes.count()) { await changes.scrollIntoViewIfNeeded(); await page.evaluate(() => window.scrollBy(0, -16)); await page.waitForTimeout(300); await shot(page, "10b-review-changes", { viewportOnly: true }); }
   const iterate = page.locator("#iterate");

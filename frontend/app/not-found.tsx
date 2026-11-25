@@ -9,7 +9,7 @@ export default function NotFound() {
         icon={FileQuestion}
         title="Page not found"
         description="The page you were looking for doesn't exist or has moved."
-        action={<ButtonLink href="/dashboard">Back to your resumes</ButtonLink>}
+        action={<ButtonLink href="/dashboard">Back to tailored resumes</ButtonLink>}
       />
     </main>
   );

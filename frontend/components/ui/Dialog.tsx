@@ -42,7 +42,7 @@ export function Dialog({
         e.preventDefault();
         onClose();
       }}
-      onClick={(e) => e.target === e.currentTarget && onClose()}
+      onMouseDown={(e) => e.button === 0 && e.target === e.currentTarget && onClose()}
       aria-labelledby={titleId}
       className={cx(
         "w-full max-w-none rounded-2xl rounded-b-none border-0 bg-white p-0 shadow-pop backdrop:bg-slate-900/50 open:animate-pop-in",

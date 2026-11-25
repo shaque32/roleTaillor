@@ -89,13 +89,13 @@ export function ConsentDialog({
   return (
     <Dialog
       open={open}
-      onClose={onClose}
+      onClose={() => !busy && onClose()}
       size="md"
       title="One thing before we start"
       description="We need your OK to process your resume with AI. You can withdraw it any time in Settings."
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="secondary" onClick={onClose} disabled={busy}>
             Not now
           </Button>
           <Button onClick={grant} disabled={!agreed} loading={busy}>

@@ -15,5 +15,6 @@ node dev/screenshots.mjs <outdir>
 ```
 
 `screenshots.mjs` needs Playwright resolvable from Node (`BASE_URL` overrides `http://localhost:3000`).
+The mock binds to `127.0.0.1` by default; set `HOST=0.0.0.0` (or another address) to override.
 Mock state is in memory and resets when the mock restarts. Onboarding has no server-side "completed" flag: it is a
 client-side flow reached after registering, so it is captured directly at `/onboarding`.
