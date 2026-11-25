@@ -1,0 +1,32 @@
+# Secret scanning rules for CI (.github/workflows/ci.yml, job "secrets") and the optional
+# pre-commit hook. Extends the gitleaks defaults, which already cover Anthropic, Stripe,
+# AWS, GitHub and private keys.
+title = "RoleTailor secret scanning"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "deepseek-api-key"
+description = "DeepSeek API key"
+regex = '''\bsk-[a-f0-9]{32}\b'''
+keywords = ["sk-"]
+
+[[rules]]
+id = "stripe-webhook-secret"
+description = "Stripe webhook signing secret"
+regex = '''\bwhsec_[A-Za-z0-9]{24,}\b'''
+keywords = ["whsec_"]
+
+[allowlist]
+description = "Documented placeholders and test dummies. Never add a real value here."
+regexTarget = "match"
+regexes = [
+  '''dev-insecure-secret-change-me''',
+  '''change-me-to-a-long-random-string''',
+  '''whsec_test_secret''',
+  '''sk_test_dummy''',
+]
+paths = [
+  '''frontend/package-lock\.json''',
+]
