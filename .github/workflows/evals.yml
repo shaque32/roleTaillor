@@ -1,0 +1,97 @@
+name: evals
+
+# Regression gate for prompt, model routing, and validation changes.
+# offline: free and deterministic, every pull request.
+# live-evidence: behaviour changes must ship with a live eval run on the same code.
+# live (manual): runs the paid live eval in CI when the ANTHROPIC_API_KEY secret is set.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      run_live:
+        description: "Run the paid live eval (needs the ANTHROPIC_API_KEY secret)"
+        type: boolean
+        default: false
+      max_usd:
+        description: "Spend cap for the live run, USD"
+        default: "6"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evals-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+      - name: Install
+        working-directory: backend
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -q -e ".[dev]"
+      - name: Lint evals
+        working-directory: backend
+        run: .venv/bin/ruff check ../evals
+      - name: Pipeline and harness tests
+        working-directory: backend
+        run: .venv/bin/python -m pytest -q --ignore=tests/platform tests ../evals/tests
+      - name: Validate eval cases
+        run: make eval-validate
+      - name: Offline regression gate
+        run: make eval-gate
+
+  live-evidence:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -q pyyaml pydantic
+      - name: Require a live eval for prompt, model, or validation changes
+        run: python evals/gate.py live-evidence --base "origin/${{ github.base_ref }}"
+
+  live:
+    if: github.event_name == 'workflow_dispatch' && inputs.run_live
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: evals-live
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        working-directory: backend
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -q -e ".[dev]"
+      - name: Live eval
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        run: make eval-live MAX_USD=${{ inputs.max_usd }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: live-eval
+          path: |
+            evals/reports/
+            evals/results/live_summary.json

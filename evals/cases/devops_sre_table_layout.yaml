@@ -1,0 +1,49 @@
+name: devops_sre_table_layout
+family: software
+seniority: mid
+scenario: layout
+resume:
+  layout: table
+  name: Isaac Montrose
+  contact: Denver, CO | isaac.montrose@example.com | (303) 555-0167
+  experience:
+    - company: Skyline Telehealth
+      title: DevOps Engineer
+      dates: May 2022 – Present
+      bullets:
+        - Run a 40-node k8s cluster on AWS hosting 25 services with 99.95% availability.
+        - Wrote Terraform modules that cut new-environment setup from three days to two hours.
+        - Built Prometheus and Grafana dashboards and alerts that reduced mean time to detect by 50%.
+        - Standardised continuous integration across 18 repositories using Jenkins pipelines.
+    - company: Gridline Energy Software
+      title: Systems Engineer
+      dates: Aug 2019 – Apr 2022
+      bullets:
+        - Automated server patching with Ansible for 300 hosts, closing critical CVEs within 7 days.
+        - Containerised four legacy applications with Docker and documented rollback procedures.
+        - Joined the on-call rotation and wrote runbooks for the ten most frequent alerts.
+  skills:
+    - {label: "Cloud:", value: "AWS, k8s, Docker"}
+    - {label: "Automation:", value: "Terraform, Ansible, Jenkins, Bash, Python"}
+    - {label: "Monitoring:", value: "Prometheus, Grafana"}
+  education:
+    - {school: Colorado State University, degree: B.S. Computer Information Systems, year: "2019"}
+  headings:
+    experience: Work History
+    skills: Technical Skills
+job: |
+  Site Reliability Engineer
+  Keep our customer-facing platform fast and available.
+  Requirements:
+  - 3+ years running production Kubernetes on AWS
+  - Infrastructure as code with Terraform or Pulumi
+  - CI/CD pipeline ownership
+  - Monitoring and alerting with Prometheus and Grafana
+  - Distributed tracing with Honeycomb and service mesh experience with Istio
+  - Defining SLOs and on-call practices
+canaries: [Pulumi, Honeycomb, Istio]
+expect:
+  min_changes: 0
+  live_min_changes: 1
+  live_expected_gaps: [Honeycomb, Istio]
+notes: Table layout with custom headings and no summary; a good tailoring aligns k8s to Kubernetes and continuous integration to CI/CD without adding tracing or service mesh tools.

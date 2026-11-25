@@ -1,0 +1,53 @@
+name: healthcare_data_scientist_strong
+family: healthcare
+seniority: senior
+scenario: strong_match
+resume:
+  layout: classic
+  name: Naveen Subramaniam
+  contact: Philadelphia, PA | naveen.s@example.com | (215) 555-0163
+  summary: >-
+    Health data scientist with eight years of experience building ML models on clinical and claims data, with deep HIPAA and survival analysis experience.
+  experience:
+    - company: Keystone Health System
+      title: Senior Data Scientist
+      dates: Feb 2021 – Present
+      bullets:
+        - Built a 30-day readmission risk ML model on 1.4M encounters that reached an AUC of 0.81 and is used by care managers.
+        - Developed survival analysis models of time to relapse for oncology patients and presented results to clinical leads.
+        - Worked within HIPAA controls, de-identification, and audit logging for all PHI pipelines and notebooks.
+        - Productionized models behind a Python service with monitoring for drift and weekly performance reports.
+        - Mentored two junior data scientists and reviewed their modeling code.
+    - company: Brandywine Payer Analytics
+      title: Data Scientist
+      dates: Jul 2017 – Jan 2021
+      bullets:
+        - Predicted high-cost claimants using gradient boosting in Python, improving case-finding precision by 19%.
+        - Wrote SQL against a Postgres claims warehouse of 600M rows to create analytic cohorts.
+        - Validated models for fairness across age, sex, and race and documented findings for compliance review.
+  skills:
+    - {label: "Languages:", value: "Python, SQL, R"}
+    - {label: "Methods:", value: "ML, survival analysis, gradient boosting, causal inference, model monitoring"}
+    - {label: "Data and compliance:", value: "Postgres, Git, HIPAA, de-identification"}
+  education:
+    - {school: University of Pennsylvania, degree: M.S. Biostatistics, year: "2017"}
+    - {school: Penn State University, degree: B.S. Statistics, year: "2015"}
+job: |
+  Senior Data Scientist, Healthcare Machine Learning
+  Build machine learning that improves patient outcomes at a value-based care company.
+  Responsibilities:
+  - Develop and validate risk models, including survival analysis, on clinical and claims data
+  - Deploy models and monitor them in production
+  - Work within HIPAA requirements when handling PHI
+  Requirements:
+  - 5+ years of applied machine learning, ideally in healthcare
+  - Strong Python and SQL, with PostgreSQL experience
+  - Familiarity with FHIR and OMOP data models
+  - Experience with Databricks or SageMaker
+  - HITRUST exposure is a plus
+canaries: [FHIR, OMOP, Databricks, SageMaker, HITRUST]
+expect:
+  min_changes: 0
+  live_min_changes: 1
+  live_expected_gaps: [FHIR, Databricks]
+notes: ML -> machine learning and Postgres -> PostgreSQL align fairly and core evidence is strong; FHIR, OMOP, and cloud ML platforms are honest gaps.

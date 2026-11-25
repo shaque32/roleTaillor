@@ -1,4 +1,7 @@
 name: data_governance_partial_match
+family: data_ai
+seniority: lead
+scenario: partial_match
 resume: classic
 page_limit: 2
 job: |

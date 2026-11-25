@@ -11,3 +11,7 @@ node_modules/
 evals/reports/
 *.egg-info/
 dump.rdb
+# Gold set: real resumes are personal data. Only the README and the synthetic example are tracked.
+evals/gold/*/
+!evals/gold/_example/
+evals/gold/_example/output/

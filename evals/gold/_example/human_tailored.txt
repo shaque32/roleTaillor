@@ -1,0 +1,12 @@
+Jordan Example
+Springfield, ST | jordan.example@example.com | (555) 555-0100
+SUMMARY
+Business intelligence analyst with five years of experience building dashboards and logistics performance reports for operations teams.
+EXPERIENCE
+Northwind Logistics — Senior Data Analyst	2021 - Present
+Automated weekly SQL and Tableau reporting, cutting manual spreadsheet work by 10 hours a week.
+Reported on-time delivery and late shipments with warehouse managers.
+Cleaned and joined data from three internal systems using Python and pandas.
+Contoso Retail — Data Analyst	2018 - 2021
+Maintained sales dashboards used by regional managers.
+Ran ad hoc analyses of promotions and presented results to the merchandising team.

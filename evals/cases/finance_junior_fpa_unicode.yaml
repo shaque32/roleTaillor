@@ -1,0 +1,50 @@
+name: finance_junior_fpa_unicode
+family: finance
+seniority: junior
+scenario: unicode
+resume:
+  layout: classic
+  name: Zoë Ólafsdóttir-Nguyễn
+  contact: Dublin, Ireland | zoe.olafsdottir@example.com | +353 (555) 555-0175
+  summary: >-
+    Finance analyst with two years of experience in budgeting and reporting for European subscription businesses, “detail first” by habit.
+  experience:
+    - company: Liffey Digital Media
+      title: Finance Analyst
+      dates: Sep 2023 – Present
+      bullets:
+        - Maintained the monthly budget vs. actual report for €18M in annual revenue across Ireland, Germany, and France.
+        - Replaced a “naïve” flat-percentage forecast with a driver-based model, cutting forecast error from 11% to 6%.
+        - Reconciled €2.3M of quarterly intercompany balances – a task that once took four days – in under two.
+        - Built Power BI views of cost centre spend for six department heads.
+    - company: Aurora Software
+      title: Finance Intern
+      dates: Jun 2022 – Aug 2022
+      bullets:
+        - Prepared accruals and supplier schedules in Excel for a team of three accountants.
+        - Cleaned a ledger export of 9,000 rows and flagged 140 duplicate invoices worth €61K.
+  skills:
+    - {label: "Finance:", value: "budgeting, variance analysis, forecasting, reconciliation, IFRS"}
+    - {label: "Tools:", value: "Excel, Power BI, SQL, Oracle"}
+  education:
+    - {school: Trinity College Dublin, degree: B.Sc. Business and Economics, year: "2023"}
+job: |
+  FP&A Analyst
+  Support planning and forecasting for a European software group.
+  Responsibilities:
+  - Prepare monthly budget vs. actual reporting and variance commentary
+  - Build driver-based forecasts with business partners
+  - Maintain models in Excel and report in Power BI
+  - Support the annual planning cycle
+  Requirements:
+  - 1–3 years in FP&A, finance, or accounting
+  - Advanced Excel and strong analytical skills
+  - Experience with Anaplan or Adaptive Planning
+  - Knowledge of Hyperion
+  - Fluency in English; German is a plus
+canaries: [Anaplan, Adaptive Planning, Hyperion]
+expect:
+  min_changes: 0
+  live_min_changes: 1
+  live_expected_gaps: [Anaplan, Hyperion]
+notes: Non-ASCII name, en dashes, curly quotes, euro amounts, and accented words must survive editing intact; a good tailoring emphasizes driver-based forecasting without adding planning tools.

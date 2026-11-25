@@ -1,0 +1,225 @@
+{
+  "created_at": "2026-11-25T06:43:41Z",
+  "fingerprint": "6fa79c2e37c8bacc",
+  "case_count": 35,
+  "reps": 1,
+  "judge_model": "claude-sonnet",
+  "configs": {
+    "plan_sonnet": {
+      "overrides": {
+        "plan": "medium"
+      },
+      "models": {
+        "structure_resume": "claude-haiku-5-5",
+        "analyze_job": "claude-haiku-5-5",
+        "plan": "claude-sonnet-5-5",
+        "summary": "claude-sonnet-5-5",
+        "rewrite": "claude-haiku-5-5",
+        "verify_claims": "claude-haiku-5-5",
+        "feedback": "claude-haiku-5-5"
+      },
+      "summary": {
+        "cases": 35,
+        "scored": 35,
+        "errors": 0,
+        "skipped": 0,
+        "pass_rate": 0.9429,
+        "fabrication_cases": 0,
+        "fabrications": 0,
+        "fabrication_rate": 0.0,
+        "mean_changes": 1.97,
+        "mean_reverted": 0.54,
+        "mean_coverage_before": 30.19,
+        "mean_coverage_after": 34.62,
+        "mean_coverage_gain": 4.43,
+        "mean_planned_blocks": 4.37,
+        "zero_change_rate": 0.171,
+        "mean_no_gain_skipped": 0.4,
+        "mean_exact_term_gain": 7.7,
+        "plan_escalation_rate": 0.0,
+        "rewrite_escalation_rate": 0.0,
+        "expected_gap_recall": 1.0,
+        "length_outlier_blocks": 4,
+        "max_length_drift": 0.378,
+        "unexpected_terms": 12,
+        "mean_cost_usd": 0.025166,
+        "p50_cost_usd": 0.026986,
+        "p95_cost_usd": 0.035003,
+        "max_cost_usd": 0.038397,
+        "gate_hits_per_run": {
+          "facts.claims": 0.94,
+          "facts.keywords": 0.34,
+          "facts.numbers": 0.31,
+          "layout.length": 0.29,
+          "authenticity.stuffing": 0.14,
+          "facts.terms": 0.06
+        },
+        "mean_cost_by_stage": {
+          "analyze_job": 0.000506,
+          "feedback": 0.000515,
+          "plan": 0.015351,
+          "rewrite": 0.001343,
+          "structure_resume": 0.000904,
+          "summary": 0.006084,
+          "verify_claims": 0.000465
+        },
+        "mean_latency_by_stage_s": {
+          "rewrite": 10.26,
+          "plan": 6.22,
+          "structure_resume": 5.8,
+          "analyze_job": 4.09,
+          "feedback": 3.97,
+          "verify_claims": 3.66,
+          "summary": 2.85
+        },
+        "p50_latency_s": 36.11,
+        "p95_latency_s": 45.95,
+        "failure_counts": {
+          "too_few_changes": 2
+        },
+        "pass_rate_by_scenario": {
+          "career_change": 0.5,
+          "keyword_bait": 1.0,
+          "layout": 1.0,
+          "long_resume": 1.0,
+          "metric_heavy": 1.0,
+          "missing_credential": 0.67,
+          "no_metrics": 1.0,
+          "noisy_jd": 1.0,
+          "partial_match": 1.0,
+          "poor_match": 1.0,
+          "prompt_injection": 1.0,
+          "seniority_stretch": 1.0,
+          "sparse_resume": 1.0,
+          "strong_match": 1.0,
+          "unicode": 1.0,
+          "vague_jd": 1.0
+        },
+        "judge_cost_usd": 0.19105,
+        "judge": {
+          "truthfulness": 4.37,
+          "relevance": 2.71,
+          "readability": 4.03,
+          "voice": 4.03,
+          "n": 35,
+          "truthfulness_below_4": 2
+        }
+      },
+      "failed_cases": [
+        "legal_contracts_missing_credential",
+        "support_lead_to_csm_career_change"
+      ]
+    },
+    "plan_haiku": {
+      "overrides": {
+        "plan": "low"
+      },
+      "models": {
+        "structure_resume": "claude-haiku-5-5",
+        "analyze_job": "claude-haiku-5-5",
+        "plan": "claude-haiku-5-5",
+        "summary": "claude-sonnet-5-5",
+        "rewrite": "claude-haiku-5-5",
+        "verify_claims": "claude-haiku-5-5",
+        "feedback": "claude-haiku-5-5"
+      },
+      "summary": {
+        "cases": 35,
+        "scored": 35,
+        "errors": 0,
+        "skipped": 0,
+        "pass_rate": 0.7714,
+        "fabrication_cases": 0,
+        "fabrications": 0,
+        "fabrication_rate": 0.0,
+        "mean_changes": 1.31,
+        "mean_reverted": 0.46,
+        "mean_coverage_before": 29.58,
+        "mean_coverage_after": 31.57,
+        "mean_coverage_gain": 1.99,
+        "mean_planned_blocks": 2.63,
+        "zero_change_rate": 0.343,
+        "mean_no_gain_skipped": 0.11,
+        "mean_exact_term_gain": 4.37,
+        "plan_escalation_rate": 0.0,
+        "rewrite_escalation_rate": 0.0,
+        "expected_gap_recall": 0.984,
+        "length_outlier_blocks": 6,
+        "max_length_drift": 0.379,
+        "unexpected_terms": 13,
+        "mean_cost_usd": 0.010149,
+        "p50_cost_usd": 0.01203,
+        "p95_cost_usd": 0.015902,
+        "max_cost_usd": 0.016338,
+        "gate_hits_per_run": {
+          "facts.claims": 0.6,
+          "facts.numbers": 0.29,
+          "layout.length": 0.26,
+          "facts.keywords": 0.23,
+          "authenticity.stuffing": 0.09
+        },
+        "mean_cost_by_stage": {
+          "analyze_job": 0.00048,
+          "feedback": 0.00051,
+          "plan": 0.001495,
+          "rewrite": 0.000702,
+          "structure_resume": 0.000849,
+          "summary": 0.005703,
+          "verify_claims": 0.00041
+        },
+        "mean_latency_by_stage_s": {
+          "plan": 10.47,
+          "rewrite": 5.61,
+          "structure_resume": 5.53,
+          "feedback": 4.16,
+          "analyze_job": 3.75,
+          "verify_claims": 3.32,
+          "summary": 2.72
+        },
+        "p50_latency_s": 35.14,
+        "p95_latency_s": 46.64,
+        "failure_counts": {
+          "missed_gaps": 1,
+          "too_few_changes": 8
+        },
+        "pass_rate_by_scenario": {
+          "career_change": 0.5,
+          "keyword_bait": 1.0,
+          "layout": 1.0,
+          "long_resume": 1.0,
+          "metric_heavy": 1.0,
+          "missing_credential": 0.33,
+          "no_metrics": 0.0,
+          "noisy_jd": 0.0,
+          "partial_match": 0.8,
+          "poor_match": 1.0,
+          "prompt_injection": 1.0,
+          "seniority_stretch": 1.0,
+          "sparse_resume": 0.0,
+          "strong_match": 1.0,
+          "unicode": 1.0,
+          "vague_jd": 1.0
+        },
+        "judge_cost_usd": 0.181222,
+        "judge": {
+          "truthfulness": 4.57,
+          "relevance": 2.83,
+          "readability": 4.34,
+          "voice": 4.31,
+          "n": 35,
+          "truthfulness_below_4": 5
+        }
+      },
+      "failed_cases": [
+        "data_ai_new_grad_analyst_sparse",
+        "healthcare_data_coordinator_no_rn",
+        "hr_business_partner_noisy_jd",
+        "legal_contracts_missing_credential",
+        "marketing_brand_manager_no_metrics",
+        "mech_eng_hardware_partial",
+        "software_intern_sparse",
+        "support_lead_to_csm_career_change"
+      ]
+    }
+  }
+}

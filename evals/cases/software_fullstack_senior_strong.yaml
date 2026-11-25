@@ -1,0 +1,49 @@
+name: software_fullstack_senior_strong
+family: software
+seniority: senior
+scenario: strong_match
+resume:
+  layout: classic
+  name: Priya Raghunathan
+  contact: Austin, TX | priya.r@example.com | (512) 555-0147 | github.com/praghu-example
+  summary: >-
+    Full-stack engineer with eight years of experience shipping customer-facing web products in
+    TypeScript, React, and Node.js, with a habit of owning features from schema to UI.
+  experience:
+    - company: Harborview Software
+      title: Senior Software Engineer
+      dates: Mar 2021 – Present
+      bullets:
+        - Led the rebuild of the scheduling web app in React and TypeScript, serving 38,000 weekly active users.
+        - Designed Node.js services and Postgres schemas for appointment booking, cutting p95 API latency from 620 ms to 180 ms.
+        - Introduced component-level testing and code review standards across a team of seven engineers.
+        - Mentored three mid-level engineers, two of whom were promoted within 18 months.
+    - company: Tallgrass Labs
+      title: Software Engineer
+      dates: Aug 2017 – Feb 2021
+      bullets:
+        - Built an internal reporting dashboard in React that replaced 14 hand-maintained spreadsheets.
+        - Wrote Node.js REST endpoints and background workers handling 1.2 million jobs per month.
+        - Migrated the billing tables to Postgres with zero downtime and a tested rollback plan.
+  skills:
+    - {label: "Languages:", value: "TypeScript, JavaScript, SQL, HTML, CSS"}
+    - {label: "Frameworks:", value: "React, Node.js, Express, Jest"}
+    - {label: "Platform:", value: "Postgres, Redis, Docker, AWS, GitHub Actions"}
+  education:
+    - {school: University of Texas at Austin, degree: B.S. Computer Science, year: "2017"}
+job: |
+  Senior Full-Stack Engineer
+  Join the product team building our workforce planning platform.
+  Requirements:
+  - 6+ years of experience with TypeScript, React, and Node.js
+  - Strong PostgreSQL schema design and query tuning
+  - Experience with GraphQL APIs and Next.js
+  - End-to-end testing with Cypress
+  - Observability with Datadog and infrastructure as code in Terraform
+  - Mentoring engineers and leading technical design reviews
+canaries: [GraphQL, Next.js, Cypress, Datadog, Terraform]
+expect:
+  min_changes: 0
+  live_min_changes: 1
+  live_expected_gaps: [GraphQL, Cypress]
+notes: Postgres to PostgreSQL and the mentoring and design-review language are honest alignments; GraphQL, Next.js, Cypress, Datadog, and Terraform must not appear.

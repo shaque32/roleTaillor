@@ -198,13 +198,14 @@ def _insert_changes_and_validations(conn: Connection, workflow_id: UUID, generat
         conn.execute(
             text(
                 "INSERT INTO resume_changes (organization_id, generated_resume_id, block_path,"
-                " prior_text, proposed_text, reason, prioritized_keywords)"
+                " prior_text, proposed_text, reason, prioritized_keywords, scope, source_stage)"
                 " VALUES (roletailor.current_organization_id(), :g, :path, :prior, :proposed,"
-                " :reason, :kw)"
+                " :reason, :kw, :scope, :source)"
             ),
             {"g": generated_id, "path": change.block_path, "prior": change.prior_text,
              "proposed": change.proposed_text, "reason": change.reason,
-             "kw": change.prioritized_keywords},
+             "kw": change.prioritized_keywords, "scope": change.scope,
+             "source": change.source_stage},
         )
     for outcome in result.validations:
         stage = outcome.details.get("stage") if isinstance(outcome.details, dict) else None
