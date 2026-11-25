@@ -178,32 +178,32 @@ def _invoice_paid(conn: Connection, org_id: UUID, obj: Obj) -> None:
 
 
 def _charge_refunded(conn: Connection, org_id: UUID, obj: Obj) -> None:
+    intent = obj.get("payment_intent")
+    if not intent:
+        log.warning("refund without a payment intent", extra={"charge": obj.get("id")})
+        return
+    refunded = obj.get("amount_refunded") or 0
+    amount = max(obj.get("amount") or 0, refunded)
+    # One upsert, so the refund is applied whichever event wins a concurrent delivery.
+    # The refund can arrive before the event that creates the payment row: it is then
+    # recorded here, and a later settlement cannot grant a credit for refunded money
+    # (credits require refunded_minor = 0, and settlement only updates status). If a
+    # settlement inserts the row at the same moment, this statement waits for it and
+    # takes the update branch instead of being dropped.
     payment = fetch_one(
         conn,
-        "UPDATE payments SET refunded_minor = least(:refunded, amount_minor),"
-        " status = CASE WHEN :refunded >= amount_minor THEN 'refunded' ELSE status END"
-        " WHERE stripe_payment_intent_id = :pi RETURNING id",
-        {"refunded": obj.get("amount_refunded") or 0, "pi": obj.get("payment_intent")},
+        "INSERT INTO payments (organization_id, stripe_payment_intent_id, status, currency,"
+        " amount_minor, refunded_minor) VALUES (:org, :pi, :status, :cur, :amount, :refunded)"
+        " ON CONFLICT (stripe_payment_intent_id) DO UPDATE SET"
+        " refunded_minor = least(EXCLUDED.refunded_minor, payments.amount_minor),"
+        " status = CASE WHEN EXCLUDED.refunded_minor >= payments.amount_minor"
+        " THEN 'refunded' ELSE payments.status END"
+        " RETURNING id, (xmax = 0) AS inserted",
+        {"org": org_id, "pi": intent, "status": "refunded" if refunded >= amount else "pending",
+         "cur": (obj.get("currency") or "usd").upper(), "amount": amount, "refunded": refunded},
     )
-    if payment is None:
-        # The refund can be delivered before the event that creates the payment row.
-        # Record it now so a later settlement event cannot grant a credit for refunded
-        # money: credits require refunded_minor = 0, and settlement only updates status.
-        if not obj.get("payment_intent"):
-            log.warning("refund without a payment intent", extra={"charge": obj.get("id")})
-            return
-        refunded, amount = obj.get("amount_refunded") or 0, obj.get("amount") or 0
-        amount = max(amount, refunded)
-        conn.execute(
-            text(
-                "INSERT INTO payments (organization_id, stripe_payment_intent_id, status, currency,"
-                " amount_minor, refunded_minor) VALUES (:org, :pi, :status, :cur, :amount, :refunded)"
-                " ON CONFLICT (stripe_payment_intent_id) DO NOTHING"
-            ),
-            {"org": org_id, "pi": obj["payment_intent"],
-             "status": "refunded" if refunded >= amount else "pending",
-             "cur": (obj.get("currency") or "usd").upper(), "amount": amount, "refunded": refunded},
-        )
+    assert payment is not None
+    if payment["inserted"]:
         audit.record(conn, org_id=org_id, action="billing.refunded", resource_type="organization",
                      resource_id=org_id, metadata={"before_payment_recorded": True})
         return
