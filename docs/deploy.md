@@ -64,7 +64,7 @@ Secrets live only in Fly, and in GitHub as a deploy token. They are never commit
 | `RT_STRIPE_SECRET_KEY`, `RT_STRIPE_WEBHOOK_SECRET`, `RT_STRIPE_SUBSCRIPTION_PRICE_ID` | api | Stripe dashboard (use test mode for staging) |
 | `FLY_API_TOKEN` | GitHub environments `staging` and `prod` | `fly tokens create deploy -a roletailor-api` (one token for each app set, or an org deploy token) |
 
-To rotate a secret, run `fly secrets set NAME=value -a <app>`. This restarts the machines with the new value. For the database passwords, run `ALTER ROLE ... PASSWORD` first, then update both URLs.
+To rotate a secret, run `fly secrets set NAME=value -a <app>`. This restarts the machines with the new value. For the database passwords, connect as the cluster admin (as in step 3) and run `\password rt_app` or `\password rt_owner`, which hides what you type, then update the matching URL.
 
 ## First-time setup (one environment)
 
@@ -76,12 +76,11 @@ These steps need your Fly account and credentials. Start with staging.
    ```bash
    fly mpg create --name roletailor-staging --region iad      # choose the Developer plan for staging and Basic for prod
    ```
-   Generate two passwords with `openssl rand -hex 24` and keep them in your password manager. Then, from the repo root, open an admin session that keeps the admin password out of the process list too: store it in `~/.pgpass` (mode 600) and connect with a URL that has no password in it, for example through `fly mpg proxy` and `psql "postgresql://<admin-user>@localhost:<port>/<db>"` (check `flyctl mpg --help` for the exact subcommand in your version). Do not pass psql a URL that contains the password, and avoid `fly mpg connect`, which may hand psql such a URL. In that session, enter them at psql's own prompts, so they never reach a command line, shell history or the process list:
+   Generate two passwords with `openssl rand -hex 24` and keep them in your password manager. Then, from the repo root, open an admin session that keeps the admin password out of the process list too: store it in `~/.pgpass` (mode 600) and connect with a URL that has no password in it, for example through `fly mpg proxy` and `psql "postgresql://<admin-user>@localhost:<port>/<db>"` (check `flyctl mpg --help` for the exact subcommand in your version). Do not pass psql a URL that contains the password, and avoid `fly mpg connect`, which may hand psql such a URL. Then run the script, which creates the roles first and then asks for each password with psql's hidden `\password` prompt:
+   ```bash
+   psql "postgresql://<admin-user>@localhost:<port>/<db>" -f db/bootstrap/managed_roles.sql
    ```
-   \prompt 'rt_owner password: ' owner_password
-   \prompt 'rt_app password: ' app_password
-   \i db/bootstrap/managed_roles.sql
-   ```
+   Paste each password from your password manager when asked. Nothing you type shows on screen, and the passwords never reach a command line, shell history, the process list or the server log. An empty answer clears that password, so if that happens, connect again and run `\password rt_app` (or `rt_owner`). Re-running the script leaves existing passwords alone; add `-v set_passwords=1` to be asked for both again.
    If the cluster admin cannot create roles, create users named `rt_owner` and `rt_app` with `fly mpg users` instead. `rt_app` must not be a superuser, own the database, or have BYPASSRLS.
 4. **Run the bootstrap script.** `deploy/fly/bootstrap.sh staging` creates the three apps and the Redis volume, creates the Tigris bucket, generates `REDIS_PASSWORD` and `RT_SECRET_KEY`, and prompts for the provider and Stripe keys without echoing them.
 5. **Set the database URLs.**
