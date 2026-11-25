@@ -62,6 +62,8 @@ def html_to_text(markup: object) -> str:
                 break
             first.unwrap()
         item.insert(0, "- ")
+    for cell in soup.find_all(("td", "th")):
+        cell.append(" ")  # keep adjacent table cells from running together
     for tag in soup.find_all(_BLOCK_TAGS):
         tag.insert_before("\n")
         tag.append("\n")
@@ -91,7 +93,10 @@ def _require_dict(payload: object) -> dict:
 def _parse_greenhouse(payload: object) -> BoardJob:
     data = _require_dict(payload)
     # Greenhouse returns the description as entity-escaped HTML.
-    text = html_to_text(html.unescape(data.get("content") or ""))
+    content = data.get("content")
+    if not isinstance(content, str):
+        raise BoardParseError("posting has no description")
+    text = html_to_text(html.unescape(content))
     return BoardJob(text=text, title=_text(data.get("title")), company=_text(data.get("company_name")))
 
 

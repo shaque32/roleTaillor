@@ -73,6 +73,8 @@ def test_html_to_text_keeps_blocks_and_inline_text_together():
         "<ul><li><p>First</p></li><li>Second <strong>bold</strong></li></ul><script>x()</script>"
     )
     assert text == "Role\nHi I’m Colin, Director.\nSecond line\n- First\n- Second bold"
+    table = "<table><tr><th>Skill</th><th>Level</th></tr><tr><td>SQL</td><td>Python</td></tr></table>"
+    assert job_boards.html_to_text(table) == "Skill Level\nSQL Python"
     assert job_boards.html_to_text(None) == "" and job_boards.html_to_text(42) == ""
 
 
@@ -169,6 +171,7 @@ GENERIC_PAGE = httpx.Response(
     httpx.Response(200, text="<html>maintenance</html>", headers={"content-type": "text/html"}),
     httpx.Response(200, text="not json", headers={"content-type": "application/json"}),
     httpx.Response(200, json=["unexpected"]),
+    httpx.Response(200, json={"title": "Odd", "content": 42}),
     httpx.Response(200, json={"title": "Empty", "content": "&lt;p&gt;Too short&lt;/p&gt;"}),
     httpx.Response(200, json={"content": "x" * 200_000}),  # over the size cap
 ])
