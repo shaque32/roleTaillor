@@ -12,6 +12,7 @@ WEIGHT = {"must": 3.0, "should": 2.0, "nice": 1.0}
 FINDING_PENALTY = {
     "text_box_content": 15, "layout_table": 10, "images_present": 5, "many_fonts": 5,
     "header_footer_content": 3, "scanned_pdf_needs_ocr": 40,
+    "ocr_applied": 10, "ocr_low_confidence": 15,
 }
 CORE_SECTIONS = ("experience", "education", "skills")
 

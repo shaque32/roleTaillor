@@ -64,7 +64,7 @@ Workflow `status`: draft, queued, running, paused, completed, failed, cancelled.
 | GET | /share/{token} | public | 302 to a short-lived signed download URL; 404 when expired or revoked |
 | GET | /files/{token} | public, signed | file bytes (local storage backend only; S3 uses presigned URLs) |
 
-Exports apply every change not explicitly rejected. `ats_report` and `feedback_report` are DOCX summaries. `pdf` returns `503 pdf_unavailable` when LibreOffice is missing.
+Exports apply every change not explicitly rejected. `ats_report` and `feedback_report` are DOCX summaries. `pdf` keeps the original layout for text-PDF sources when the edits fit, otherwise converts the DOCX and returns `503 pdf_unavailable` when LibreOffice is missing. Generated versions expose `render: {mode: docx_in_place|pdf_in_place|template, fallback_reason}`.
 
 ## Applications
 CRUD at `/applications` (GET list, POST) and `/applications/{id}` (GET, PATCH, DELETE 204) with `{company, role_title, status, applied_at?, reminder_at?, notes?, job_posting_id?, resume_version_id?}`.
