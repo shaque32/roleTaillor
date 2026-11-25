@@ -42,7 +42,7 @@ def test_edited_docx_converts():
 @needs_soffice
 def test_read_pdf_text_structure(classic_pdf):
     doc = read_pdf_text(classic_pdf)
-    assert doc.source_format == "pdf" and not doc.supports_in_place_edit
+    assert doc.source_format == "pdf" and doc.supports_in_place_edit
     assert [b.id for b in doc.blocks] == [f"l{n}" for n in range(len(doc.blocks))]
     assert all(b.kind == "text_line" for b in doc.blocks)
     assert doc.blocks[0].text == "Priya Raman" and not doc.blocks[0].is_heading

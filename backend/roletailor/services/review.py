@@ -67,8 +67,8 @@ def approve(principal: Principal, generated_id: UUID) -> dict:
     return row
 
 
-def _reviewed_docx(conn: Connection, generated: dict) -> bytes:
-    """The parent version with every change that was not rejected applied."""
+def _reviewed_edits(conn: Connection, generated: dict) -> tuple[rendering.Base, dict[str, str], dict | None]:
+    """The parent version and every change that was not rejected."""
     version = resumes.get_version(conn, generated["resume_version_id"])
     parent = resumes.get_version(conn, version["parent_version_id"])
     changes = fetch_all(
@@ -79,7 +79,16 @@ def _reviewed_docx(conn: Connection, generated: dict) -> bytes:
     )
     edits = {c["block_path"]: c["proposed_text"] for c in changes if c["proposed_text"] is not None}
     structure = (version["content"] or {}).get("structure")
-    return rendering.render_with_edits(rendering.load_base(conn, parent), edits, structure)
+    return rendering.load_base(conn, parent), edits, structure
+
+
+def _reviewed_docx(conn: Connection, generated: dict) -> bytes:
+    return rendering.render_with_edits(*_reviewed_edits(conn, generated))
+
+
+def _reviewed_pdf(conn: Connection, generated: dict) -> bytes:
+    """PDF sources keep their original layout when the edits fit; others convert the DOCX."""
+    return rendering.render_pdf(*_reviewed_edits(conn, generated))
 
 
 def _export_bytes(conn: Connection, generated: dict, kind: ExportKind) -> tuple[bytes, str, str]:
@@ -87,10 +96,8 @@ def _export_bytes(conn: Connection, generated: dict, kind: ExportKind) -> tuple[
     if kind == "docx":
         return _reviewed_docx(conn, generated), DOCX_MEDIA_TYPE, "tailored-resume"
     if kind == "pdf":
-        from roletailor.documents import docx_to_pdf
-
         try:
-            pdf = docx_to_pdf(_reviewed_docx(conn, generated))
+            pdf = _reviewed_pdf(conn, generated)
         except Exception as exc:
             raise AppError(503, "pdf_unavailable", "PDF export is unavailable. Download the DOCX instead.") from exc
         return pdf, PDF_MEDIA_TYPE, "tailored-resume"

@@ -160,7 +160,7 @@ function PreferencesCard({ user, onSaved }: { user: User; onSaved: (u: User) => 
                 name="preferred_template_id"
                 label="Template ID"
                 defaultValue={user.preferred_template_id ?? ""}
-                hint="Used when re-rendering PDF uploads. Leave blank for the default template. DOCX uploads keep their own formatting."
+                hint="Used when a PDF upload cannot keep its own layout (scanned files, or edits that do not fit). Leave blank for the default template. DOCX and most text PDFs keep their own formatting."
               />
             </div>
           </Disclosure>
