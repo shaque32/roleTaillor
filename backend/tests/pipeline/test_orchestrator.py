@@ -181,3 +181,33 @@ def test_default_config_retries_once_without_escalating(doc):
     result, _ = run(doc, prov)
     assert result.edits == {}
     assert [m for m, k in prov.calls if k == "rewrite"] == ["claude-haiku-5-5", "claude-haiku-5-5"]
+
+
+class SummaryPlanner(FakeProvider):
+    """Plans only the summary and writes it itself."""
+
+    text = ("Machine learning and data engineer with 8 years of experience taking models from "
+            "notebook to production and building reliable batch and streaming pipelines.")
+
+    def _plan(self, p):
+        bid = next(b["id"] for s in p["resume"]["sections"] if s["kind"] == "summary"
+                   for b in s["blocks"] if b["editable"])
+        return TailoringPlan(summary_text=self.text, confidence=0.9,
+                             block_plans=[BlockPlan(block_id=bid, target_keywords=["machine learning"])])
+
+
+def test_planner_summary_is_used_without_a_rewrite_call(doc):
+    prov = SummaryPlanner()
+    result, _ = run(doc, prov)
+    assert [c.proposed_text for c in result.changes] == [SummaryPlanner.text]
+    assert not any(k == "rewrite" for _, k in prov.calls)
+    assert any(k == "verify_claims" for _, k in prov.calls)  # still fact-checked
+
+
+def test_rejected_planner_summary_falls_back_to_the_writer(doc):
+    prov = SummaryPlanner()
+    prov.text = SummaryPlanner.text.replace("8 years", "12 years")  # invented number
+    result, _ = run(doc, prov)
+    assert result.edits == {}
+    assert sum(k == "rewrite" for _, k in prov.calls) == 1  # retry round went to the writer
+    assert {v.rule_key: v for v in result.validations}["facts.numbers"].details["violations"]

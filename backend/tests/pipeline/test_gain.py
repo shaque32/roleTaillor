@@ -1,7 +1,7 @@
 """The value gate: edits that only reword or reshuffle are dropped."""
 
 from roletailor.domain.models import JobAnalysis, Keyword
-from roletailor.pipeline.stages import _match_ending
+from roletailor.pipeline.stages import match_ending
 from roletailor.pipeline.validation.rules import has_gain
 
 JOB = JobAnalysis(keywords=[Keyword(term="PostgreSQL", synonyms=["Postgres"]),
@@ -30,9 +30,9 @@ def test_no_keywords_means_no_gate():
 
 
 def test_closing_full_stop_follows_the_original():
-    assert _match_ending("Built the thing.", "Built the service") == "Built the service."
-    assert _match_ending("Python, SQL", "SQL, Python.") == "SQL, Python"
-    assert _match_ending("Built it.", "Built it well.") == "Built it well."
+    assert match_ending("Built the thing.", "Built the service") == "Built the service."
+    assert match_ending("Python, SQL", "SQL, Python.") == "SQL, Python"
+    assert match_ending("Built it.", "Built it well.") == "Built it well."
 
 
 def test_job_language_and_moving_any_keyword_forward_are_gains():

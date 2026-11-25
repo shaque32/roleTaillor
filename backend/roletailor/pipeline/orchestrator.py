@@ -149,7 +149,8 @@ def _rewrite_and_validate(gateway: Gateway, *, document: ParsedDocument, plan, s
         if not pending:
             break
         items = []
-        for bid in sorted(pending, key=lambda x: list(plans).index(x)):
+        drafted = _planner_summary(plan, plans, scopes, by_id) if rnd == 0 else {}
+        for bid in sorted(pending - set(drafted), key=lambda x: list(plans).index(x)):
             bp, orig = plans[bid], by_id[bid].text
             lo, hi = scope_length_bounds(len(clean(orig)), scopes[bid], doc_ctx.length_tolerance)
             items.append({"block_id": bid, "text": orig, "target_keywords": bp.target_keywords,
@@ -158,7 +159,9 @@ def _rewrite_and_validate(gateway: Gateway, *, document: ParsedDocument, plan, s
                           "min_chars": max(lo, 1), "max_chars": hi})
         out = stages.rewrite(gateway, items=items, context=context, feedback=feedback,
                              label=f"{it}:rewrite:r{rnd}", batch_size=router.rewrite_batch_size,
-                             concurrency=router.rewrite_concurrency, escalate=1 if rnd == 2 else 0)
+                             concurrency=router.rewrite_concurrency, escalate=1 if rnd == 2 else 0) \
+            if items else {}
+        out.update(drafted)
 
         failures: dict[str, list[Violation]] = {}
         candidates: dict[str, BlockRewrite] = {}
@@ -218,6 +221,21 @@ def _rewrite_and_validate(gateway: Gateway, *, document: ParsedDocument, plan, s
                 rule_key="value.no_gain", block_id=bid, severity="warn",
                 detail=f"kept original; proposed edit added nothing for this job: {proposed[:300]}"))
     return accepted, log_by_rule, sorted(pending)
+
+
+def _planner_summary(plan, plans: dict, scopes: dict[str, str], by_id: dict) -> dict[str, BlockRewrite]:
+    """Use the planner's summary draft as the first attempt for the summary block. If a
+    gate rejects it, the block falls back to the writer on the retry round, with the
+    reasons. Only when exactly one summary block is planned, so the draft's target is
+    unambiguous."""
+    targets = [b for b in plans if scopes.get(b) == "summary"]
+    text = clean(plan.summary_text)
+    if len(targets) != 1 or not text:
+        return {}
+    bid = targets[0]
+    return {bid: BlockRewrite(block_id=bid, new_text=stages.match_ending(by_id[bid].text, text),
+                              reason="Summary rewritten to lead with the strengths this job asks for.",
+                              keywords_used=plans[bid].target_keywords)}
 
 
 def _enforce_page_limit(source_docx: bytes, edits: dict[str, str], document: ParsedDocument,

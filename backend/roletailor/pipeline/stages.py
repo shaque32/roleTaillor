@@ -217,11 +217,11 @@ def rewrite(gw: Gateway, *, items: list[dict], context: dict, feedback: dict[str
     originals = {b["block_id"]: b["text"] for b in items}
     out = {r.block_id: r for rs in results for r in rs if r.block_id in originals}
     for bid, r in out.items():
-        r.new_text = _match_ending(originals[bid], r.new_text)
+        r.new_text = match_ending(originals[bid], r.new_text)
     return out
 
 
-def _match_ending(original: str, new: str) -> str:
+def match_ending(original: str, new: str) -> str:
     """Keep the original's closing full stop (or lack of one). Models drop or add it at
     random, which shows up as noise in the diff the candidate reviews."""
     o, n = original.rstrip(), new.rstrip()

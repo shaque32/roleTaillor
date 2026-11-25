@@ -1,10 +1,10 @@
 {
-  "fingerprint": "21327b08d17a3880",
+  "fingerprint": "f1e19c199a9616de",
   "summary": {
     "cases": 35,
     "pass_rate": 1.0,
     "fabrications": 0,
-    "mean_cost_usd": 0.006632,
+    "mean_cost_usd": 0.007103,
     "mean_changes": 0.26,
     "mean_coverage_after": 39.6
   },
@@ -14,245 +14,245 @@
       "passed": true,
       "changes": 0,
       "coverage_after": 0.0,
-      "cost_usd": 0.006307
+      "cost_usd": 0.006771
     },
     "data_ai_analytics_engineer_strong": {
       "status": "ok",
       "passed": true,
       "changes": 0,
       "coverage_after": 75.0,
-      "cost_usd": 0.007613
+      "cost_usd": 0.008094
     },
     "data_ai_cdao_executive_partial": {
       "status": "ok",
       "passed": true,
       "changes": 1,
       "coverage_after": 68.4,
-      "cost_usd": 0.007677
+      "cost_usd": 0.008146
     },
     "data_ai_new_grad_analyst_sparse": {
       "status": "ok",
       "passed": true,
       "changes": 0,
       "coverage_after": 46.2,
-      "cost_usd": 0.005977
+      "cost_usd": 0.006433
     },
     "data_engineer_injection": {
       "status": "ok",
       "passed": true,
       "changes": 1,
       "coverage_after": 61.9,
-      "cost_usd": 0.006944
+      "cost_usd": 0.007413
     },
     "data_governance_partial_match": {
       "status": "ok",
       "passed": true,
       "changes": 0,
       "coverage_after": 23.4,
-      "cost_usd": 0.007985
+      "cost_usd": 0.008449
     },
     "design_ux_to_backend_poor": {
       "status": "ok",
       "passed": true,
       "changes": 0,
       "coverage_after": 0.0,
-      "cost_usd": 0.006023
+      "cost_usd": 0.006487
     },
     "devops_sre_table_layout": {
       "status": "ok",
       "passed": true,
       "changes": 0,
       "coverage_after": 100.0,
-      "cost_usd": 0.007268
+      "cost_usd": 0.007759
     },
     "education_teacher_to_instructional_designer": {
       "status": "ok",
       "passed": true,
       "changes": 0,
       "coverage_after": 0.0,
-      "cost_usd": 0.005849
+      "cost_usd": 0.006315
     },
     "exec_coo_logistics_strong": {
       "status": "ok",
       "passed": true,
       "changes": 0,
       "coverage_after": 0.0,
-      "cost_usd": 0.005733
+      "cost_usd": 0.006197
     },
     "exec_vp_to_cto_stretch": {
       "status": "ok",
       "passed": true,
       "changes": 0,
       "coverage_after": 75.0,
-      "cost_usd": 0.006748
+      "cost_usd": 0.007238
     },
     "finance_junior_fpa_unicode": {
       "status": "ok",
       "passed": true,
       "changes": 0,
       "coverage_after": 100.0,
-      "cost_usd": 0.005782
+      "cost_usd": 0.006248
     },
     "finance_senior_analyst_no_cpa": {
       "status": "ok",
       "passed": true,
       "changes": 0,
       "coverage_after": 0.0,
-      "cost_usd": 0.005829
+      "cost_usd": 0.006295
     },
     "frontend_poor_match": {
       "status": "ok",
       "passed": true,
       "changes": 0,
       "coverage_after": 0.0,
-      "cost_usd": 0.007071
+      "cost_usd": 0.007527
     },
     "healthcare_data_coordinator_no_rn": {
       "status": "ok",
       "passed": true,
       "changes": 0,
       "coverage_after": 0.0,
-      "cost_usd": 0.005747
+      "cost_usd": 0.006211
     },
     "healthcare_data_scientist_strong": {
       "status": "ok",
       "passed": true,
       "changes": 1,
       "coverage_after": 75.0,
-      "cost_usd": 0.007836
+      "cost_usd": 0.008327
     },
     "hr_business_partner_noisy_jd": {
       "status": "ok",
       "passed": true,
       "changes": 0,
       "coverage_after": 0.0,
-      "cost_usd": 0.006046
+      "cost_usd": 0.00651
     },
     "legal_contracts_missing_credential": {
       "status": "ok",
       "passed": true,
       "changes": 0,
       "coverage_after": 0.0,
-      "cost_usd": 0.005895
+      "cost_usd": 0.006352
     },
     "marketing_brand_manager_no_metrics": {
       "status": "ok",
       "passed": true,
       "changes": 0,
       "coverage_after": 50.0,
-      "cost_usd": 0.005768
+      "cost_usd": 0.006224
     },
     "marketing_growth_keyword_bait": {
       "status": "ok",
       "passed": true,
       "changes": 1,
       "coverage_after": 75.0,
-      "cost_usd": 0.006724
+      "cost_usd": 0.007201
     },
     "mech_eng_hardware_partial": {
       "status": "ok",
       "passed": true,
       "changes": 0,
       "coverage_after": 0.0,
-      "cost_usd": 0.005726
+      "cost_usd": 0.00619
     },
     "ml_engineer_strong_match": {
       "status": "ok",
       "passed": true,
       "changes": 1,
       "coverage_after": 65.7,
-      "cost_usd": 0.008485
+      "cost_usd": 0.008961
     },
     "ml_nlp_unicode": {
       "status": "ok",
       "passed": true,
       "changes": 1,
       "coverage_after": 100.0,
-      "cost_usd": 0.006661
+      "cost_usd": 0.00713
     },
     "ops_coordinator_vague_jd": {
       "status": "ok",
       "passed": true,
       "changes": 0,
       "coverage_after": 100.0,
-      "cost_usd": 0.005576
+      "cost_usd": 0.006042
     },
     "ops_supplychain_metric_heavy": {
       "status": "ok",
       "passed": true,
       "changes": 0,
       "coverage_after": 0.0,
-      "cost_usd": 0.006464
+      "cost_usd": 0.006928
     },
     "product_b2b_pm_ai_partial": {
       "status": "ok",
       "passed": true,
       "changes": 1,
       "coverage_after": 33.3,
-      "cost_usd": 0.007114
+      "cost_usd": 0.007593
     },
     "product_senior_pm_director_stretch": {
       "status": "ok",
       "passed": true,
       "changes": 1,
       "coverage_after": 50.0,
-      "cost_usd": 0.006643
+      "cost_usd": 0.007109
     },
     "sales_account_executive_metric_heavy": {
       "status": "ok",
       "passed": true,
       "changes": 0,
       "coverage_after": 100.0,
-      "cost_usd": 0.00599
+      "cost_usd": 0.006454
     },
     "software_backend_go_partial": {
       "status": "ok",
       "passed": true,
       "changes": 0,
       "coverage_after": 40.0,
-      "cost_usd": 0.007048
+      "cost_usd": 0.007537
     },
     "software_fullstack_senior_strong": {
       "status": "ok",
       "passed": true,
       "changes": 0,
       "coverage_after": 45.5,
-      "cost_usd": 0.007911
+      "cost_usd": 0.008391
     },
     "software_intern_sparse": {
       "status": "ok",
       "passed": true,
       "changes": 0,
       "coverage_after": 37.5,
-      "cost_usd": 0.006729
+      "cost_usd": 0.007218
     },
     "software_mobile_injection": {
       "status": "ok",
       "passed": true,
       "changes": 1,
       "coverage_after": 33.3,
-      "cost_usd": 0.006516
+      "cost_usd": 0.006995
     },
     "software_staff_lead_long": {
       "status": "ok",
       "passed": true,
       "changes": 0,
       "coverage_after": 22.2,
-      "cost_usd": 0.008818
+      "cost_usd": 0.00931
     },
     "support_lead_to_csm_career_change": {
       "status": "ok",
       "passed": true,
       "changes": 0,
       "coverage_after": 0.0,
-      "cost_usd": 0.005673
+      "cost_usd": 0.00613
     },
     "table_layout_ml": {
       "status": "ok",
       "passed": true,
       "changes": 0,
       "coverage_after": 8.7,
-      "cost_usd": 0.005944
+      "cost_usd": 0.006408
     }
   }
 }
