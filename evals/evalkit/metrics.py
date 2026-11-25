@@ -24,6 +24,11 @@ class CaseMetrics:
     reverted: int = 0
     coverage_before: float = 0.0
     coverage_after: float = 0.0
+    # Share of job keywords present in the job's own wording (no synonym credit). The
+    # pipeline may not add a keyword the resume does not evidence, so synonym-inclusive
+    # coverage cannot rise by design; this is the number honest tailoring can move.
+    exact_coverage_before: float = 0.0
+    exact_coverage_after: float = 0.0
     ats_before: float = 0.0
     ats_after: float = 0.0
     max_length_drift: float = 0.0  # largest |new-old|/old across edited blocks
@@ -58,6 +63,9 @@ def compute(case: EvalCase, original: dict[str, str], result: TailoringResult, *
     before = scoring.keyword_report(source_text, result.job)
     after = scoring.keyword_report("\n".join(result.edits.get(k, v) for k, v in original.items()), result.job)
     m.coverage_before, m.coverage_after = round(before.coverage, 1), round(after.coverage, 1)
+    final_text = "\n".join(result.edits.get(k, v) for k, v in original.items())
+    m.exact_coverage_before = _exact_coverage(source_text, result.job)
+    m.exact_coverage_after = _exact_coverage(final_text, result.job)
     m.ats_before, m.ats_after = result.scores_before.ats, result.scores_after.ats
     m.changes = len(result.changes)
     cov = next((v for v in result.validations if v.rule_key == "pipeline.coverage"), None)
@@ -69,6 +77,12 @@ def compute(case: EvalCase, original: dict[str, str], result: TailoringResult, *
             g for g in case.expect.live_expected_gaps
             if not any(contains_term(r, g) or contains_term(g, r) for r in result.plan.gaps)]
     return m
+
+
+def _exact_coverage(text: str, job) -> float:
+    total = sum(scoring.WEIGHT[k.importance] for k in job.keywords)
+    got = sum(scoring.WEIGHT[k.importance] for k in job.keywords if contains_term(text, k.term))
+    return round(100.0 * got / total, 1) if total else 0.0
 
 
 def failures(case: EvalCase, m: CaseMetrics, *, live: bool) -> list[str]:

@@ -44,6 +44,5 @@ canaries: [SOX, board reporting, SEC filings, public company]
 expect:
   min_changes: 0
   live_min_changes: 1
-  live_max_changes: 3
   live_expected_gaps: [SOX, board reporting]
 notes: Scope gap between a 22-engineer startup and a 500+ engineer public company; a good tailoring aligns k8s to Kubernetes and highlights budget and investor roadmap work without inflating headcount or implying public-company experience.

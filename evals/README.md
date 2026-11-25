@@ -27,7 +27,9 @@ trusting the pipeline's own validators:
 | Metric | Meaning | Gate |
 |---|---|---|
 | fabrication | a canary or a new number appears in an edited block | zero, always |
-| keyword coverage before and after | importance-weighted share of job keywords present | may not drop |
+| keyword coverage | importance-weighted share of job keywords present, synonyms counted. The pipeline never adds a keyword the resume lacks, so this cannot rise | may not drop |
+| exact-term gain | same, counting only the job's own wording (Postgres to PostgreSQL). This is what honest tailoring can move | reported |
+| escalation rate | share of runs where plan or rewrite moved up a model tier | reported |
 | expected gap recall | must-have gaps the plan reports to the user | live, 0.8 |
 | changes, reverted blocks | accepted edits, and edits that failed every gate | per-case bounds |
 | length drift | largest relative length change of an edited block (warn above 25%) | reported |

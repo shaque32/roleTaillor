@@ -131,8 +131,10 @@ def plan(gw: Gateway, *, doc: ParsedDocument, structure: ResumeStructure, job: J
         "focus_block_ids": focus or [],
     }
     p = gw.run(stage="plan", label=label, prompt_key="plan", payload=payload, output=TailoringPlan)
-    if p.confidence < 0.6:
-        # Low confidence: escalate one tier once, keep the better-confidence plan.
+    if p.confidence < 0.6 and any(bp.action == "rewrite" for bp in p.block_plans):
+        # Low confidence in a plan that will change text: escalate one tier once and keep
+        # the better-confidence plan. A plan with nothing to rewrite (a poor match) is
+        # not escalated: a larger model cannot create evidence, it only costs more.
         try:
             p2 = gw.run(stage="plan", label=label, prompt_key="plan", payload=payload,
                         output=TailoringPlan, escalate=1)

@@ -147,3 +147,25 @@ def test_unevidenced_must_have_is_always_a_gap():
     out = _sanitize_plan(plan, job, scopes={}, focus=None,
                          evidence={"CPA": [], "Excel": ["p3"], "Workiva": []})
     assert out.gaps == ["CPA"]
+
+
+class Unsure(FakeProvider):
+    """Plans with low confidence; `rewrites` controls whether it proposes any edits."""
+
+    def __init__(self, rewrites: bool):
+        super().__init__()
+        self.rewrites = rewrites
+
+    def _plan(self, p):
+        plan = super()._plan(p)
+        plan.confidence = 0.3
+        if not self.rewrites:
+            plan.block_plans = []
+        return plan
+
+
+def test_low_confidence_plan_escalates_only_when_it_rewrites(doc):
+    for rewrites, expected_plan_calls in ((True, 2), (False, 1)):
+        prov = Unsure(rewrites)
+        run(doc, prov)
+        assert sum(k == "plan" for _, k in prov.calls) == expected_plan_calls

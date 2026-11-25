@@ -157,6 +157,8 @@ def run_case(case: EvalCase, *, cfg: dict, settings: Settings, live: bool, rende
         "latency_s": round(elapsed, 2),
         "latency_by_stage_s": _latency_by_stage(sink),
         "calls": _calls(sink),
+        "escalated_stages": sorted({r.stage.split(":")[1] for r in sink.records
+                                    if "escalated" in r.routing_reason and r.status != "cached"}),
         "models_used": sorted({f"{r.stage.split(':')[1]}:{r.model_name}" for r in sink.records
                                if r.status == "succeeded"}),
         "examples": [{"block": c.block_path, "before": c.prior_text, "after": c.proposed_text,
@@ -233,6 +235,11 @@ def aggregate(rows: list[dict]) -> dict:
         "mean_coverage_after": round(statistics.mean(r["coverage_after"] for r in ok), 2) if ok else 0.0,
         "mean_coverage_gain": round(statistics.mean(r["coverage_after"] - r["coverage_before"] for r in ok), 2)
         if ok else 0.0,
+        "mean_exact_term_gain": round(statistics.mean(
+            r["exact_coverage_after"] - r["exact_coverage_before"] for r in ok), 2) if ok else 0.0,
+        "plan_escalation_rate": round(sum("plan" in r["escalated_stages"] for r in ok) / len(ok), 3) if ok else 0.0,
+        "rewrite_escalation_rate": round(sum("rewrite" in r["escalated_stages"] for r in ok) / len(ok), 3)
+        if ok else 0.0,
         "expected_gap_recall": _gap_recall(ok),
         "length_outlier_blocks": sum(len(r["length_outliers"]) for r in ok),
         "max_length_drift": max((r["max_length_drift"] for r in ok), default=0.0),
@@ -277,8 +284,9 @@ def markdown(report: dict) -> str:
     lines = [f"# RoleTailor eval report, {report['created_at']}", "",
              f"Mode: **{report['mode']}**. Cases: {report['case_count']}. Reps: {report['reps']}. "
              f"Behaviour fingerprint: `{report['fingerprint']}`. Total spend: ${report['total_spend_usd']:.4f}.", ""]
-    cols = ["pass_rate", "fabrication_cases", "errors", "mean_changes", "mean_coverage_gain",
-            "expected_gap_recall", "length_outlier_blocks", "mean_cost_usd", "p95_cost_usd", "p50_latency_s",
+    cols = ["pass_rate", "fabrication_cases", "errors", "mean_changes", "mean_exact_term_gain",
+            "expected_gap_recall", "plan_escalation_rate", "rewrite_escalation_rate",
+            "length_outlier_blocks", "mean_cost_usd", "p95_cost_usd", "p50_latency_s",
             "p95_latency_s"]
     names = list(report["configs"])
     lines += ["| metric | " + " | ".join(names) + " |", "|---|" + "---|" * len(names)]
@@ -302,7 +310,17 @@ def markdown(report: dict) -> str:
         for r in bad:
             why = r.get("error") or ", ".join(r["failures"])
             extra = f" fabrications={r['fabrications']}" if r.get("fabrications") else ""
+            if r.get("expected_gaps_missed"):
+                extra += f" missed={r['expected_gaps_missed']} reported={r['gaps_reported']}"
             lines.append(f"- {r['case']} ({r['scenario']}): {why}{extra}")
+        flagged = [r for r in report["configs"][n]["results"]
+                   if r.get("judge", {}).get("truthfulness", 5) < 4]
+        if flagged:
+            lines += ["", f"Judge flagged {len(flagged)} cases for truthfulness below 4:"]
+            for r in flagged:
+                j = r["judge"]
+                lines.append(f"- {r['case']} (truthfulness {j['truthfulness']}): "
+                             f"{'; '.join(j['unsupported_claims'][:3]) or j['rationale'][:200]}")
         lines.append("")
     return "\n".join(lines)
 

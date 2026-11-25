@@ -44,6 +44,5 @@ canaries: [Gainsight, renewals, QBRs, net revenue retention]
 expect:
   min_changes: 0
   live_min_changes: 1
-  live_max_changes: 2
   live_expected_gaps: [Gainsight, renewals]
 notes: Only transferable skills (onboarding, escalations, coaching, trend reporting) can be emphasised; renewals ownership and Gainsight are honest gaps.

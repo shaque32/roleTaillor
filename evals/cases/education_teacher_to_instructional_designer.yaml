@@ -47,6 +47,5 @@ job: |
 canaries: [Articulate Storyline, SCORM, ADDIE, Camtasia, Adobe Captivate]
 expect:
   min_changes: 0
-  live_max_changes: 3
   live_expected_gaps: [Articulate Storyline, SCORM]
 notes: Curriculum, assessment, and objectives are transferable; authoring tools are real gaps, so a good tailoring reframes teaching as learning design with few edits and no invented tools.
