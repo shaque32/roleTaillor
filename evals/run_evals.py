@@ -155,6 +155,7 @@ def run_case(case: EvalCase, *, cfg: dict, settings: Settings, live: bool, rende
         "cost_usd": round(sink.total_cost, 6),
         "cost_by_stage": {k: round(v, 6) for k, v in sink.by_stage().items()},
         "latency_s": round(elapsed, 2),
+        "latency_by_stage_s": _latency_by_stage(sink),
         "calls": _calls(sink),
         "models_used": sorted({f"{r.stage.split(':')[1]}:{r.model_name}" for r in sink.records
                                if r.status == "succeeded"}),
@@ -174,6 +175,16 @@ def run_case(case: EvalCase, *, cfg: dict, settings: Settings, live: bool, rende
         except Exception as e:  # noqa: BLE001 - a judge failure never fails the case
             row["judge_error"] = f"{type(e).__name__}: {e}"[:300]
     return row
+
+
+def _latency_by_stage(sink: MemorySink) -> dict[str, float]:
+    """Summed model time per stage. Rewrite batches run in parallel, so their sum can
+    exceed wall time; the order still shows where the time goes."""
+    out: dict[str, float] = {}
+    for r in sink.records:
+        key = r.stage.split(":", 2)[1] if ":" in r.stage else r.stage
+        out[key] = round(out.get(key, 0.0) + r.latency_ms / 1000, 2)
+    return dict(sorted(out.items(), key=lambda kv: -kv[1]))
 
 
 def _calls(sink: MemorySink) -> dict:
@@ -230,6 +241,7 @@ def aggregate(rows: list[dict]) -> dict:
         "p50_cost_usd": _pct(costs, 0.5), "p95_cost_usd": _pct(costs, 0.95),
         "max_cost_usd": round(max(costs), 6) if costs else 0.0,
         "mean_cost_by_stage": {s: round(sum(v) / len(ok), 6) for s, v in sorted(stages.items())},
+        "mean_latency_by_stage_s": _mean_latency(ok),
         "p50_latency_s": _pct(lat, 0.5), "p95_latency_s": _pct(lat, 0.95),
         "failure_counts": dict(sorted(fail_counts.items())),
         "pass_rate_by_scenario": {k: round(sum(v) / len(v), 2) for k, v in sorted(by_scenario.items())},
@@ -241,6 +253,14 @@ def aggregate(rows: list[dict]) -> dict:
         out["judge"]["n"] = len(judged)
         out["judge"]["truthfulness_below_4"] = sum(j["truthfulness"] < 4 for j in judged)
     return out
+
+
+def _mean_latency(rows: list[dict]) -> dict[str, float]:
+    tot: dict[str, float] = {}
+    for r in rows:
+        for s, v in r.get("latency_by_stage_s", {}).items():
+            tot[s] = tot.get(s, 0.0) + v
+    return {s: round(v / len(rows), 2) for s, v in sorted(tot.items(), key=lambda kv: -kv[1])} if rows else {}
 
 
 def _gap_recall(rows: list[dict]) -> float | None:
@@ -275,6 +295,7 @@ def markdown(report: dict) -> str:
             f"{k}={v}" for k, v in report["configs"][n]["models"].items()))
         target = ("not measured (no scored runs)" if not s["scored"]
                   else "met" if s["mean_cost_usd"] <= TARGET_COST_PER_RUN else "NOT met")
+        lines.append(f"Mean model time by stage (s): {s['mean_latency_by_stage_s']}.")
         lines.append(f"Mean cost by stage: {s['mean_cost_by_stage']}. "
                      f"Target ${TARGET_COST_PER_RUN:.2f}/run: {target}.")
         bad = [r for r in report["configs"][n]["results"] if r["status"] != "ok" or not r["passed"]]

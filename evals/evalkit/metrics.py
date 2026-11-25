@@ -63,9 +63,11 @@ def compute(case: EvalCase, original: dict[str, str], result: TailoringResult, *
     cov = next((v for v in result.validations if v.rule_key == "pipeline.coverage"), None)
     m.reverted = len(cov.details["reverted_blocks"]) if cov else 0
     m.gaps_reported = list(result.plan.gaps)
-    gaps_lower = {g.lower() for g in result.plan.gaps}
     if live:
-        m.expected_gaps_missed = [g for g in case.expect.live_expected_gaps if g.lower() not in gaps_lower]
+        # "CPA license" or "Active CPA license" reports the CPA gap; exact match is too strict.
+        m.expected_gaps_missed = [
+            g for g in case.expect.live_expected_gaps
+            if not any(contains_term(r, g) or contains_term(g, r) for r in result.plan.gaps)]
     return m
 
 

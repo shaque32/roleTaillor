@@ -134,3 +134,16 @@ def test_page_limit_reverts_growth(doc, monkeypatch):
     result, _ = run(doc, FakeProvider(), source_docx=doc[0])
     page = next(v for v in result.validations if v.rule_key == "layout.page_limit")
     assert page.details["reverted_blocks"] and result.edits == {}
+
+
+def test_unevidenced_must_have_is_always_a_gap():
+    from roletailor.domain.models import JobAnalysis, Keyword
+    from roletailor.pipeline.stages import _sanitize_plan
+
+    job = JobAnalysis(keywords=[Keyword(term="CPA", importance="must", category="certification"),
+                                Keyword(term="Excel", importance="must"),
+                                Keyword(term="Workiva", importance="nice")])
+    plan = TailoringPlan(gaps=[], block_plans=[])
+    out = _sanitize_plan(plan, job, scopes={}, focus=None,
+                         evidence={"CPA": [], "Excel": ["p3"], "Workiva": []})
+    assert out.gaps == ["CPA"]

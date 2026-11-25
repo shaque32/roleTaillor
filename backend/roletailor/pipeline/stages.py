@@ -139,11 +139,11 @@ def plan(gw: Gateway, *, doc: ParsedDocument, structure: ResumeStructure, job: J
             p = p2 if p2.confidence >= p.confidence else p
         except AIUnavailable:
             pass
-    return _sanitize_plan(p, job, scopes, focus)
+    return _sanitize_plan(p, job, scopes, focus, evidence=payload["evidence"])
 
 
 def _sanitize_plan(p: TailoringPlan, job: JobAnalysis, scopes: dict[str, str],
-                   focus: list[str] | None) -> TailoringPlan:
+                   focus: list[str] | None, evidence: dict[str, list[str]] | None = None) -> TailoringPlan:
     terms = {k.term.lower(): k.term for k in job.keywords}
     keep: list[BlockPlan] = []
     seen: set[str] = set()
@@ -160,6 +160,12 @@ def _sanitize_plan(p: TailoringPlan, job: JobAnalysis, scopes: dict[str, str],
                  for b in focus if b in scopes and b not in seen]
     p.block_plans = keep
     p.gaps = [g for g in p.gaps if g.lower() in terms]
+    # Backstop: a must-have requirement that no resume block mentions is always a gap,
+    # even if the planner left it out. Missing licences and credentials matter most.
+    if evidence is not None:
+        reported = {g.lower() for g in p.gaps}
+        p.gaps += [k.term for k in job.keywords
+                   if k.importance == "must" and not evidence.get(k.term) and k.term.lower() not in reported]
     return p
 
 
