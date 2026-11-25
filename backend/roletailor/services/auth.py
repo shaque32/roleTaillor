@@ -164,8 +164,9 @@ def _verify_password(conn: Connection, email: str, password: str) -> dict | None
         return None
     if _hasher.check_needs_rehash(stored):
         conn.execute(
-            text("UPDATE users SET password_hash = :h WHERE id = :id"),
-            {"h": _hasher.hash(password), "id": row["id"]},
+            # Only over the hash that was just verified, never over a newer password.
+            text("UPDATE users SET password_hash = :h WHERE id = :id AND password_hash = :old"),
+            {"h": _hasher.hash(password), "id": row["id"], "old": stored},
         )
     return row
 
