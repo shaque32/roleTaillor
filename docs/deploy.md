@@ -82,7 +82,7 @@ These steps need your Fly account and credentials. Start with staging.
    \prompt 'rt_app password: ' app_password
    \i db/bootstrap/managed_roles.sql
    ```
-   If the cluster admin cannot create roles, create users named `rt_owner` and `rt_app` with `fly mpg users` instead. `rt_app` must not be a superuser, own the database, or have BYPASSRLS.
+   If the cluster admin cannot create roles, create users named `rt_owner` and `rt_app` with `fly mpg users` instead, then run only the statements from `CREATE EXTENSION` onward in `db/bootstrap/managed_roles.sql`. On this path the script does not set the passwords, so use the passwords Fly holds for those two users in step 5, not the ones you generated. If `CREATE EXTENSION` fails on permissions, enable the `vector` extension for the database through Fly Managed Postgres first, then run the statements again. `rt_app` must not be a superuser, own the database, or have BYPASSRLS.
 4. **Run the bootstrap script.** `deploy/fly/bootstrap.sh staging` creates the three apps and the Redis volume, creates the Tigris bucket, generates `REDIS_PASSWORD` and `RT_SECRET_KEY`, and prompts for the provider and Stripe keys without echoing them.
 5. **Set the database URLs.**
    ```bash

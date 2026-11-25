@@ -150,7 +150,9 @@ Estimated cost: about $60 a month for production and $20 for staging, before mod
   - `\prompt 'rt_owner password: ' owner_password`
   - `\prompt 'rt_app password: ' app_password`
   - `\i db/bootstrap/managed_roles.sql`
-  - If the cluster admin cannot create roles, create users named `rt_owner` and `rt_app` with `fly mpg users` instead, then run only the statements from `CREATE EXTENSION` onward in `db/bootstrap/managed_roles.sql`.
+  - If the cluster admin cannot create roles, create users named `rt_owner` and `rt_app` with `fly mpg users` instead, then run only the statements from `CREATE EXTENSION` onward in `db/bootstrap/managed_roles.sql`. Two things change on this path:
+    - The script no longer sets the passwords, so the two you generated are not used. Build `RT_DATABASE_URL` and `RT_MIGRATION_DATABASE_URL` from the passwords Fly holds for those two users, and store those in your password manager instead.
+    - The admin may not be allowed to install pgvector either. If `CREATE EXTENSION` fails on permissions, enable the `vector` extension for this database through Fly Managed Postgres first (dashboard or support), then run the statements again.
 - [ ] Run `deploy/fly/bootstrap.sh staging`. It creates the three apps (`roletailor-api-staging`, `roletailor-web-staging`, `roletailor-redis-staging`), the Redis volume and the Tigris bucket, and it generates and stores these without showing them:
   - `REDIS_PASSWORD` (Redis app) and `RT_REDIS_URL` (API app)
   - `RT_SECRET_KEY` (API app)
