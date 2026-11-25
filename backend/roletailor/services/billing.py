@@ -84,6 +84,26 @@ def quota(conn: Connection, *, lock: bool = False) -> Quota:
     )
 
 
+@dataclass(frozen=True)
+class PlanLimits:
+    plan: str
+    runs_per_day: int
+    iterations: int
+
+
+def plan_limits(conn: Connection | None) -> PlanLimits:
+    """Spend ceilings for the current organization's plan: "subscription" while a
+    subscription is active, otherwise "free" (pay-per-use buyers included).
+    Pass None to get the free plan's limits without a query."""
+    settings = get_settings()
+    plan = "free"
+    # Without overrides every plan has the same limits, so skip the lookup.
+    if conn is not None and settings.plan_limits and fetch_one(conn, _ACTIVE_SUBSCRIPTION_SQL):
+        plan = "subscription"
+    runs, iterations = settings.limits_for_plan(plan)
+    return PlanLimits(plan, runs, iterations)
+
+
 def payment_required(q: Quota) -> AppError:
     settings = get_settings()
     needs_acceptance = q.pay_per_use_credits > 0

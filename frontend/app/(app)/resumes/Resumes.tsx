@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Archive, FilePlus2, FileText, History, Pencil, Upload } from "lucide-react";
+import { FilePlus2, FileText, History, Pencil, Trash2, Upload } from "lucide-react";
 import { api } from "@/lib/api";
 import { useResource } from "@/lib/hooks";
 import { cx, formatDate } from "@/lib/format";
@@ -47,7 +47,7 @@ export function Resumes() {
       await api.archiveResume(archiving.id);
       setData((xs) => xs?.filter((r) => r.id !== archiving.id));
       setArchiving(null);
-      toast.success("Resume archived.");
+      toast.success("Resume deleted. It will be erased after the retention period. Backup copies expire separately.");
     } catch (err) {
       toast.error(err);
     } finally {
@@ -117,8 +117,8 @@ export function Resumes() {
                     <IconButton size="sm" label={`Rename ${r.name}`} onClick={() => setRenaming(r)}>
                       <Pencil className="h-4 w-4" aria-hidden />
                     </IconButton>
-                    <IconButton size="sm" label={`Archive ${r.name}`} onClick={() => setArchiving(r)}>
-                      <Archive className="h-4 w-4" aria-hidden />
+                    <IconButton size="sm" label={`Delete ${r.name}`} onClick={() => setArchiving(r)}>
+                      <Trash2 className="h-4 w-4" aria-hidden />
                     </IconButton>
                   </div>
                 </div>
@@ -161,15 +161,15 @@ export function Resumes() {
         open={Boolean(archiving)}
         onClose={() => setArchiving(null)}
         size="sm"
-        title="Archive this resume?"
-        description={`“${archiving?.name ?? ""}” will be hidden from your list. Tailored resumes made from it stay available.`}
+        title="Delete this resume?"
+        description={`“${archiving?.name ?? ""}” will be removed from your list now. After the retention period it is erased, together with every tailored version, export and share link made from it. Backup copies expire separately on their own schedule.`}
         footer={
           <>
             <Button variant="secondary" onClick={() => setArchiving(null)}>
               Cancel
             </Button>
             <Button variant="danger" onClick={archive} loading={busy}>
-              Archive
+              Delete
             </Button>
           </>
         }

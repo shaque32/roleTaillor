@@ -19,7 +19,7 @@ primary_region = "iad"
   app = "uvicorn roletailor.main:create_app --factory --host 0.0.0.0 --port 8000"
   # PROMETHEUS_MULTIPROC_DIR is set only for the worker (as in docker-compose): if the API
   # saw it, prometheus_client would switch to multiprocess mode and /metrics would break.
-  worker = "sh -c 'export PROMETHEUS_MULTIPROC_DIR=/tmp/prometheus && mkdir -p $PROMETHEUS_MULTIPROC_DIR && exec celery -A roletailor.worker.celery_app worker --loglevel=INFO --concurrency=2'"
+  worker = "sh -c 'export PROMETHEUS_MULTIPROC_DIR=/tmp/prometheus && mkdir -p $PROMETHEUS_MULTIPROC_DIR && exec celery -A roletailor.worker.celery_app worker -B --schedule /tmp/celerybeat-schedule --loglevel=INFO --concurrency=2'"
 
 # Non-secret, environment-neutral values. Per-environment values live in env/*.api.env.
 # Secrets (set with `fly secrets set`): RT_DATABASE_URL, RT_MIGRATION_DATABASE_URL, RT_REDIS_URL,

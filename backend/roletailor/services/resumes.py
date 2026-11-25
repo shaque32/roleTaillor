@@ -100,7 +100,7 @@ def get_owned_resume(conn: Connection, principal: Principal, resume_id: UUID, *,
     row = fetch_one(
         conn,
         f"SELECT {RESUME_COLUMNS} FROM resumes WHERE id = :id AND owner_user_id = :uid"
-        + (" FOR UPDATE" if lock else ""),
+        " AND purged_at IS NULL" + (" FOR UPDATE" if lock else ""),
         {"id": resume_id, "uid": principal.user_id},
     )
     if row is None:
@@ -117,12 +117,16 @@ def get_version(conn: Connection, version_id: UUID | str) -> dict:
     return row
 
 
-def get_owned_version(conn: Connection, principal: Principal, version_id: UUID) -> dict:
+def get_owned_version(conn: Connection, principal: Principal, version_id: UUID, *,
+                      hold=False) -> dict:
+    """`hold` share-locks the resume until commit, so the retention purge cannot erase
+    it between this check and the caller's write."""
     row = fetch_one(
         conn,
         f"SELECT {', '.join('v.' + f for f in _VERSION_FIELDS)} FROM resume_versions v"
         " JOIN resumes r ON r.id = v.resume_id"
-        " WHERE v.id = :id AND r.owner_user_id = :uid",
+        " WHERE v.id = :id AND r.owner_user_id = :uid AND r.purged_at IS NULL"
+        + (" FOR SHARE OF r" if hold else ""),
         {"id": version_id, "uid": principal.user_id},
     )
     if row is None:
@@ -346,7 +350,7 @@ def get_resume_version(principal: Principal, resume_id: UUID, version_id: UUID) 
 
 def restore_version(principal: Principal, resume_id: UUID, version_id: UUID) -> dict:
     with db.tenant_tx(principal.org_id) as conn:
-        get_owned_resume(conn, principal, resume_id)
+        get_owned_resume(conn, principal, resume_id, lock=True)  # serializes with the purge
         source = _version_of_resume(conn, resume_id, version_id)
         row = insert_version(
             conn, resume_id, content=source["content"],
