@@ -1,0 +1,50 @@
+name: marketing_growth_keyword_bait
+family: marketing
+seniority: mid
+scenario: keyword_bait
+resume:
+  layout: classic
+  name: Rafael Quintero
+  contact: Miami, FL | rafael.q@example.com | (305) 555-0138
+  summary: >-
+    Growth marketer with six years of experience in paid acquisition, lifecycle email, and conversion testing for subscription products.
+  experience:
+    - company: Tidewater Fitness App
+      title: Growth Marketing Manager
+      dates: Jan 2022 – Present
+      bullets:
+        - Managed a $90K monthly paid budget across Google Ads and Meta Ads, lowering blended CAC by 22%.
+        - Ran 25 A/B tests on landing pages with Optimizely, lifting trial signups by 17%.
+        - Built lifecycle email flows in HubSpot that improved day-30 retention from 31% to 38%.
+        - Instrumented the funnel with Segment and Amplitude and shared a weekly growth report with leadership.
+    - company: Bluebird Home Goods
+      title: Digital Marketing Specialist
+      dates: Aug 2018 – Dec 2021
+      bullets:
+        - Grew organic traffic 64% in two years using SEMrush keyword research and on-page fixes.
+        - Synced lead data into Salesforce and set up Google Analytics goals for every campaign.
+        - Ran monthly newsletters in Mailchimp to a list of 48,000 subscribers.
+  skills:
+    - {label: "Acquisition:", value: "Google Ads, Meta Ads, SEO, SEMrush, A/B tests"}
+    - {label: "Lifecycle and CRM:", value: "HubSpot, Salesforce, Mailchimp"}
+    - {label: "Analytics:", value: "Google Analytics, Amplitude, Segment, Hotjar, Optimizely"}
+  education:
+    - {school: Florida International University, degree: B.B.A. Marketing, year: "2018"}
+job: |
+  Growth Marketing Manager
+  We are looking for a growth marketer who can work across our full stack.
+  Tools you should know:
+  HubSpot, Marketo, Pardot, Salesforce, Google Ads, Meta Ads, LinkedIn Ads, Outbrain, Taboola,
+  Segment, Amplitude, Mixpanel, Braze, Klaviyo, Eloqua, Optimizely, Hotjar, SEMrush, Ahrefs,
+  Google Analytics, Looker Studio, Zapier, Mailchimp, Intercom, Drift, Zendesk, Slack, Asana,
+  Notion, Figma, Canva, Webflow, Unbounce, Hootsuite.
+  Responsibilities:
+  - Own paid and lifecycle acquisition and A/B testing across channels
+  - Report weekly on CAC, conversion, and retention
+  Requirements: 4+ years in growth or performance marketing.
+canaries: [Marketo, Pardot, Braze, Klaviyo, Eloqua, Outbrain, Taboola, Mixpanel]
+expect:
+  min_changes: 0
+  live_min_changes: 1
+  live_expected_gaps: [Marketo, Braze]
+notes: A/B tests -> A/B testing aligns and many listed tools are genuinely used; a good tailoring does not stuff the unused tools from the 30-plus tool list.

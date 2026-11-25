@@ -1,0 +1,51 @@
+name: product_b2b_pm_ai_partial
+family: product
+seniority: mid
+scenario: partial_match
+resume:
+  layout: classic
+  name: Danielle Fontaine
+  contact: Boston, MA | danielle.f@example.com | (617) 555-0173
+  summary: >-
+    Product manager with five years in B2B SaaS, shipping workflow and reporting features
+    backed by customer interviews and A/B tests.
+  experience:
+    - company: Tallyworks
+      title: Product Manager
+      dates: Feb 2022 – Present
+      bullets:
+        - Owned the reporting module for 1,800 business customers and shipped a self-serve report builder that cut support tickets by 31%.
+        - Ran 14 A/B tests on onboarding flows, lifting activation from 42% to 53% over three quarters.
+        - Wrote PRDs and prioritized a roadmap with engineering, design, and customer success using weighted scoring.
+        - Interviewed 60+ customers to find the top reporting pain points and turned them into three launches.
+    - company: Gridline Software
+      title: Associate Product Manager
+      dates: Jul 2019 – Jan 2022
+      bullets:
+        - Managed the integrations backlog and launched a Salesforce connector adopted by 22% of accounts in six months.
+        - Tracked feature adoption in Amplitude and presented monthly insights to leadership.
+        - Coordinated beta programs with 15 design partners.
+  skills:
+    - {label: "Product:", value: "roadmapping, PRDs, customer discovery, A/B tests, prioritization"}
+    - {label: "Tools:", value: "Amplitude, Jira, Figma, SQL, Salesforce"}
+  education:
+    - {school: Boston College, degree: B.A. Economics, year: "2019"}
+job: |
+  Product Manager, AI Assistant
+  Own the roadmap for a new AI assistant embedded in our workflow platform.
+  Responsibilities:
+  - Define the product vision and success metrics for AI features
+  - Run A/B testing and online experiments to improve answer quality and adoption
+  - Work with ML engineers on model evaluation and launch readiness
+  - Talk to customers weekly and turn insights into prioritized roadmap items
+  Requirements:
+  - 4+ years of product management in B2B software
+  - Hands-on LLM product experience, including RAG and prompt engineering
+  - Working knowledge of OpenAI or similar model APIs
+  - Comfort with SQL and product analytics
+canaries: [LLM, RAG, prompt engineering, OpenAI]
+expect:
+  min_changes: 0
+  live_min_changes: 1
+  live_expected_gaps: [LLM, RAG]
+notes: A/B tests -> A/B testing is evidenced and aligns; LLM, RAG, and prompt engineering are gaps; a good tailoring emphasizes experimentation, discovery, and analytics.

@@ -1,0 +1,51 @@
+name: education_teacher_to_instructional_designer
+family: education
+seniority: mid
+scenario: career_change
+resume:
+  layout: classic
+  name: Gwendolyn Achterberg
+  contact: Madison, WI | gwen.a@example.org | (608) 555-0149
+  summary: >-
+    High school English teacher with eight years of experience designing curriculum and assessments and coaching colleagues on instruction.
+  experience:
+    - company: Westfield High School
+      title: English Teacher and Department Lead
+      dates: Aug 2017 – Present
+      bullets:
+        - Designed a year-long grade 10 curriculum with unit plans, rubrics, and common assessments adopted by five teachers.
+        - Raised pass rates on the end-of-course assessment from 78% to 89% by redesigning units around clear learning objectives.
+        - Built blended lessons and online modules in Google Classroom for 150 students a year.
+        - Led monthly professional development sessions for 12 department teachers on feedback and assessment.
+    - company: Riverside Middle School
+      title: English Language Arts Teacher
+      dates: Aug 2014 – Jun 2017
+      bullets:
+        - Wrote project-based units aligned to state standards and tracked mastery in a gradebook.
+        - Created differentiated reading materials for students with varied needs.
+        - Collected student feedback each term and revised lessons accordingly.
+  skills:
+    - {label: "Learning design:", value: "curriculum design, assessment design, learning objectives, rubrics, differentiation, blended learning"}
+    - {label: "Tools:", value: "Google Classroom, Google Workspace, Canva, Screencastify"}
+  education:
+    - {school: University of Wisconsin-Madison, degree: M.Ed. Curriculum and Instruction, year: "2016"}
+    - {school: Lawrence University, degree: B.A. English, year: "2014"}
+job: |
+  Instructional Designer
+  Design engaging online learning for corporate customers.
+  Responsibilities:
+  - Analyze learner needs and write measurable learning objectives
+  - Build interactive e-learning modules in Articulate Storyline
+  - Package courses as SCORM for our LMS
+  - Design assessments and collect learner feedback to improve courses
+  Requirements:
+  - 3+ years of curriculum or instructional design experience
+  - Experience with the ADDIE model
+  - Hands-on Articulate Storyline and SCORM
+  - Video editing with Camtasia is a plus
+  - Adobe Captivate is a plus
+canaries: [Articulate Storyline, SCORM, ADDIE, Camtasia, Adobe Captivate]
+expect:
+  min_changes: 0
+  live_expected_gaps: [Articulate Storyline, SCORM]
+notes: Curriculum, assessment, and objectives are transferable; authoring tools are real gaps, so a good tailoring reframes teaching as learning design with few edits and no invented tools.

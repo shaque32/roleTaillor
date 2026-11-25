@@ -1,0 +1,47 @@
+name: ml_nlp_unicode
+family: data_ai
+seniority: senior
+scenario: unicode
+resume:
+  layout: classic
+  name: José Ángel Müller-Søndergaard
+  contact: Boston, MA | jose.muller@example.com | (617) 555-0134
+  summary: >-
+    ML engineer with eight years of experience building text classification and search systems,
+    from “naïve Bayes” baselines to transformer models in production.
+  experience:
+    - company: Nordlys Language Technologies
+      title: Senior ML Engineer
+      dates: Feb 2021 – Present
+      bullets:
+        - Trained an NLP intent classifier in PyTorch that reached F1 ≥ 0.91 on 40 classes → replaced a rules engine.
+        - Cut inference latency from 380 ms to 95 ms by distilling the model – saving 60% of GPU spend.
+        - Shipped LLMs for support-ticket summarisation, used by 1,200 agents.
+        - Built an evaluation harness with 6,000 labelled examples that gates every model release.
+    - company: Café Analytica
+      title: Machine Learning Engineer
+      dates: Sep 2017 – Jan 2021
+      bullets:
+        - Replaced a “naïve Bayes” spam filter with gradient boosting, raising precision from 0.82 → 0.94.
+        - Built ranking features for a recipe search used by 300,000 users – lifting click-through by 11%.
+        - Ran A/B tests of ranking changes with ≥ 95% confidence before launch.
+  skills:
+    - {label: "Languages:", value: "Python, SQL"}
+    - {label: "ML:", value: "PyTorch, scikit-learn, XGBoost, MLflow, Hugging Face"}
+  education:
+    - {school: Universidad Politécnica de Madrid, degree: M.S. Computer Science, year: "2017"}
+job: |
+  NLP Engineer
+  Build natural language processing features for our document intelligence product.
+  Requirements:
+  - 5+ years of machine learning experience, with 3+ in natural language processing
+  - Fine-tuning and evaluating large language models
+  - Production PyTorch and Hugging Face experience
+  - Named entity recognition with spaCy
+  - Experience with RLHF is a plus
+canaries: [spaCy, named entity recognition, RLHF]
+expect:
+  min_changes: 0
+  live_min_changes: 1
+  live_expected_gaps: [spaCy, named entity recognition]
+notes: Non-ASCII name, dashes, symbols, and curly quotes must survive exactly; a good tailoring aligns ML, NLP, and LLMs to the JD's spelled-out terms without adding spaCy or RLHF.

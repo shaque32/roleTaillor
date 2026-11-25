@@ -18,6 +18,7 @@ from roletailor.domain.models import (
     JobAnalysis,
     ResumeStructure,
     RewriteBatch,
+    SummaryDraft,
     TailoringPlan,
 )
 from roletailor.pipeline import heuristics
@@ -131,19 +132,47 @@ def plan(gw: Gateway, *, doc: ParsedDocument, structure: ResumeStructure, job: J
         "focus_block_ids": focus or [],
     }
     p = gw.run(stage="plan", label=label, prompt_key="plan", payload=payload, output=TailoringPlan)
-    if p.confidence < 0.6:
-        # Low confidence: escalate one tier once, keep the better-confidence plan.
+    if (gw.router.plan_escalate_on_low_confidence and p.confidence < 0.6
+            and any(bp.action == "rewrite" for bp in p.block_plans)):
+        # Optional (routing.plan_escalate_on_low_confidence): re-plan one tier higher and
+        # keep the better-confidence plan. Never for a plan with nothing to rewrite: a
+        # larger model cannot create evidence for a poor match, it only costs more.
         try:
             p2 = gw.run(stage="plan", label=label, prompt_key="plan", payload=payload,
                         output=TailoringPlan, escalate=1)
             p = p2 if p2.confidence >= p.confidence else p
         except AIUnavailable:
             pass
-    return _sanitize_plan(p, job, scopes, focus)
+    return _sanitize_plan(p, job, scopes, focus, texts={b.id: b.text for b in doc.text_blocks()})
+
+
+# Named tools and credentials must appear in the resume literally. Only skills, domains,
+# and practices can be claimed through a quote ("Terraform modules" shows
+# "infrastructure as code"); "has a CPA" or "used Snowflake" cannot be argued into being.
+QUOTABLE_CATEGORIES = {"skill", "domain", "soft", "other"}
+
+
+def _valid_term_evidence(bp: BlockPlan, job: JobAnalysis, scope: str, texts: dict[str, str]) -> list:
+    by_term = {k.term.lower(): k for k in job.keywords}
+    own = clean(texts.get(bp.block_id, "")).lower()
+    whole = clean("\n".join(texts.values())).lower()
+    keep, seen = [], set()
+    for te in bp.term_evidence:
+        k = by_term.get(te.job_term.strip().lower())
+        quote = clean(te.resume_quote).lower()
+        if k is None or k.category not in QUOTABLE_CATEGORIES or len(quote) < 4 or k.term in seen:
+            continue
+        # A bullet may only lean on its own words; the summary and skills lines may
+        # lean on anything the resume says.
+        if quote in (own if scope == "bullet" else whole):
+            te.job_term = k.term
+            keep.append(te)
+            seen.add(k.term)
+    return keep[:3]
 
 
 def _sanitize_plan(p: TailoringPlan, job: JobAnalysis, scopes: dict[str, str],
-                   focus: list[str] | None) -> TailoringPlan:
+                   focus: list[str] | None, texts: dict[str, str] | None = None) -> TailoringPlan:
     terms = {k.term.lower(): k.term for k in job.keywords}
     keep: list[BlockPlan] = []
     seen: set[str] = set()
@@ -154,6 +183,7 @@ def _sanitize_plan(p: TailoringPlan, job: JobAnalysis, scopes: dict[str, str],
             continue
         seen.add(bp.block_id)
         bp.target_keywords = [terms[t.lower()] for t in bp.target_keywords if t.lower() in terms][:3]
+        bp.term_evidence = _valid_term_evidence(bp, job, scopes[bp.block_id], texts) if texts else []
         keep.append(bp)
     if focus:  # user-requested blocks the planner skipped still get a light pass
         keep += [BlockPlan(block_id=b, instruction="Improve clarity and relevance to the job.")
@@ -185,8 +215,55 @@ def rewrite(gw: Gateway, *, items: list[dict], context: dict, feedback: dict[str
 
     with ThreadPoolExecutor(max_workers=max(1, min(concurrency, len(batches)))) as pool:
         results = list(pool.map(lambda a: run(*a), enumerate(batches)))
-    wanted = {b["block_id"] for b in items}
-    return {r.block_id: r for rs in results for r in rs if r.block_id in wanted}
+    originals = {b["block_id"]: b["text"] for b in items}
+    out = {r.block_id: r for rs in results for r in rs if r.block_id in originals}
+    for bid, r in out.items():
+        r.new_text = match_ending(originals[bid], r.new_text)
+    return out
+
+
+def summary_candidates(job: JobAnalysis, plan: TailoringPlan, blocks: list[Block]) -> list[dict]:
+    """Job terms the summary may name, must-haves first, each with the resume words that
+    back it. `stated`: the resume uses the term or a listed synonym. `shown`: the planner
+    paired the term with a resume quote that code found verbatim (_valid_term_evidence).
+    Nothing else is offered, so the summary writer chooses among earned terms."""
+    evidence = heuristics.keyword_evidence(job, blocks)
+    text = {b.id: clean(b.text) for b in blocks}
+    shown = {te.job_term: te.resume_quote for bp in plan.block_plans for te in bp.term_evidence}
+    rank = {"must": 0, "should": 1, "nice": 2}
+    out = []
+    for k in sorted(job.keywords, key=lambda k: rank[k.importance]):
+        if evidence.get(k.term):
+            out.append({"term": k.term, "importance": k.importance, "support": "stated",
+                        "mentions": len(evidence[k.term]),
+                        "resume_quote": text[evidence[k.term][0]][:240]})
+        elif k.term in shown:
+            out.append({"term": k.term, "importance": k.importance, "support": "shown",
+                        "mentions": 1, "resume_quote": shown[k.term]})
+    return out[:12]
+
+
+def write_summary(gw: Gateway, *, original: str, candidates: list[dict], context: dict,
+                  resume: str, min_chars: int, max_chars: int, feedback: list[str],
+                  label: str) -> SummaryDraft:
+    """The summary is the block a recruiter reads first, so it gets its own call on a
+    stronger model than the bullet writer. Raises AIUnavailable; the caller falls back."""
+    payload = {**context, "summary": original, "min_chars": min_chars, "max_chars": max_chars,
+               "candidates": candidates, "resume": resume,
+               **({"feedback": feedback} if feedback else {})}
+    out = gw.run(stage="summary", label=label, prompt_key="summary", payload=payload,
+                 output=SummaryDraft)
+    out.new_text = match_ending(original, out.new_text)
+    return out
+
+
+def match_ending(original: str, new: str) -> str:
+    """Keep the original's closing full stop (or lack of one). Models drop or add it at
+    random, which shows up as noise in the diff the candidate reviews."""
+    o, n = original.rstrip(), new.rstrip()
+    if not n or o.endswith(".") == n.endswith("."):
+        return new
+    return n + "." if o.endswith(".") else n.rstrip(".")
 
 
 def verify_claims(gw: Gateway, *, pairs: list[dict], facts: FactInventory, label: str) -> ClaimCheck:

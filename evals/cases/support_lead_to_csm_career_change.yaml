@@ -1,0 +1,48 @@
+name: support_lead_to_csm_career_change
+family: customer_support
+seniority: mid
+scenario: career_change
+resume:
+  layout: classic
+  name: Camille Boateng
+  contact: Atlanta, GA | camille.boateng@example.com | (404) 555-0158
+  summary: >-
+    Customer support team lead with six years of experience in B2B software support, coaching
+    agents and turning ticket trends into product fixes.
+  experience:
+    - company: Ledgerly
+      title: Support Team Lead
+      dates: Jan 2022 – Present
+      bullets:
+        - Lead a team of eleven support agents handling 9,500 tickets a month with a CSAT of 94%.
+        - Built a weekly ticket-trend report that led product to fix the top five recurring bugs.
+        - Cut first response time from 5 hours to 90 minutes by redesigning queue routing in Zendesk.
+        - Coached agents through call reviews and promoted three to senior roles.
+    - company: Mapleton Cloud
+      title: Customer Support Specialist
+      dates: Jun 2018 – Dec 2021
+      bullets:
+        - Resolved escalated technical issues for 40 mid-market accounts.
+        - Wrote 75 help-center articles that deflected about 1,200 tickets a quarter.
+        - Hosted onboarding calls for new customers and walked them through setup.
+  skills:
+    - {label: "Tools:", value: "Zendesk, Jira, Slack, Excel"}
+    - {label: "Skills:", value: "Coaching, escalation management, knowledge base writing, onboarding"}
+  education:
+    - {school: Georgia State University, degree: B.B.A. Management, year: "2018"}
+job: |
+  Customer Success Manager, Mid-Market
+  Own the relationship and outcomes for a book of 40 mid-market accounts.
+  Requirements:
+  - 3+ years in customer success or account management
+  - Ownership of renewals and expansion, with a quota
+  - Gainsight for health scoring and playbooks
+  - Running QBRs with executive sponsors
+  - Experience tracking net revenue retention
+  - Strong written and verbal communication
+canaries: [Gainsight, renewals, QBRs, net revenue retention]
+expect:
+  min_changes: 0
+  live_min_changes: 1
+  live_expected_gaps: [Gainsight, renewals]
+notes: Only transferable skills (onboarding, escalations, coaching, trend reporting) can be emphasised; renewals ownership and Gainsight are honest gaps.

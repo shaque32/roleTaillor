@@ -1,0 +1,42 @@
+name: software_intern_sparse
+family: software
+seniority: intern
+scenario: sparse_resume
+resume:
+  layout: classic
+  name: Jordan Okafor
+  contact: Madison, WI | jordan.okafor@example.org | (608) 555-0123
+  experience:
+    - company: Pinecrest Insurance
+      title: Software Engineering Intern
+      dates: Jun 2026 – Aug 2026
+      bullets:
+        - Built a Python script that checked 3,000 policy records a night for missing fields and emailed a summary.
+        - Added unit tests to a Java claims-lookup module, raising coverage from 52% to 71%.
+        - Set up a continuous integration job that ran the test suite on every pull request.
+    - company: University of Wisconsin–Madison
+      title: Teaching Assistant, Data Structures
+      dates: Sep 2025 – May 2026
+      bullets:
+        - Ran weekly labs for 35 students and held office hours on linked lists, trees, and hash tables.
+        - Graded 120 programming assignments per term and wrote feedback on style and correctness.
+  skills:
+    - {label: "Languages:", value: "Python, Java, C, SQL"}
+    - {label: "Tools:", value: "Git, Linux, VS Code"}
+  education:
+    - {school: University of Wisconsin–Madison, degree: B.S. Computer Science (expected), year: "2027"}
+job: |
+  Software Engineering Intern, Summer 2027
+  Work alongside our engineers on real features for twelve weeks.
+  What we look for:
+  - Currently pursuing a degree in computer science or a related field
+  - Coursework or project experience in Python or Java
+  - Familiarity with Git and CI/CD
+  - Exposure to Docker, AWS, or React is a plus
+  - Interest in Kubernetes and GraphQL is welcome but not required
+canaries: [Docker, AWS, React, Kubernetes, GraphQL]
+expect:
+  min_changes: 0
+  live_min_changes: 1
+  live_expected_gaps: [Docker]
+notes: Short resume; a good tailoring aligns continuous integration to CI/CD and emphasises Python, Java, and Git without inventing cloud or frontend tools.

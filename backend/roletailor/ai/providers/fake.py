@@ -20,6 +20,7 @@ from roletailor.domain.models import (
     HiringManagerFeedback,
     JobAnalysis,
     RewriteBatch,
+    SummaryDraft,
     TailoringPlan,
 )
 from roletailor.pipeline import heuristics
@@ -91,6 +92,13 @@ class FakeProvider:
                                     reason="Uses the job's terminology." if used else "kept: no supported improvement",
                                     keywords_used=used))
         return RewriteBatch(rewrites=out)
+
+    def _summary(self, p: dict) -> SummaryDraft:
+        """Swap in the job's term where the summary already uses one of its synonyms."""
+        b = {"block_id": "s", "text": p["summary"],
+             "target_keywords": [c["term"] for c in p["candidates"]][:3]}
+        r = self._rewrite({"blocks": [b]}).rewrites[0]
+        return SummaryDraft(new_text=r.new_text, terms_used=r.keywords_used, reason=r.reason)
 
     def _verify_claims(self, p: dict) -> ClaimCheck:
         res = []

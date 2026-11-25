@@ -1,4 +1,7 @@
 name: table_layout_ml
+family: data_ai
+seniority: mid
+scenario: layout
 resume: table
 page_limit: 2
 job: |

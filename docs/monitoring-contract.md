@@ -18,7 +18,7 @@ dashboards share. Change a name here first, then everywhere it is used.
 `it1:rewrite:r0b2`, `it1:plan`, `it2:verify_claims:r1`. The metric `stage` label is
 the base stage: the second `:`-separated segment when the first looks like `it<N>`,
 else the first segment. Allowed values: `structure_resume`, `analyze_job`, `plan`,
-`rewrite`, `verify_claims`, `feedback`; anything else becomes `other`.
+`summary`, `rewrite`, `verify_claims`, `feedback`; anything else becomes `other`.
 The same rule in SQL: `split_part(stage, ':', 2)` when `stage ~ '^it[0-9]+:'`, else
 `split_part(stage, ':', 1)`.
 
@@ -123,5 +123,15 @@ SELECT. `rt_app` gets nothing on `roletailor_ops`.
 - `roletailor_ops.validation_daily(day, rule_key, rule_version, generations, planned_blocks, flagged_blocks, reverted_blocks, flagged_rate)`
 - `roletailor_ops.cost_by_org_daily(day, organization_id, generations, cost_usd)`
 - `roletailor_ops.release_quality_daily(day, stage, prompt_key, prompt_version, provider, model, calls, failure_rate, fallback_rate, avg_cost_usd, p95_latency_ms)`
+- `roletailor_ops.change_decisions(organization_id, workflow_id, generated_resume_id, iteration, change_id, proposed_at, scope, source_stage, decision, decided_at, outcome, keywords, length_delta, prompt_key, prompt_version, model)`:
+  one row per proposed edit, without its text. `scope` is `summary`, `bullet` or `skills`;
+  `source_stage` is the stage that wrote it (`summary` or `rewrite`). `outcome` is
+  `accepted` or `rejected` (the candidate's choice on the review screen),
+  `kept_by_default` (left pending on a resume they approved or exported, which applies
+  every change not rejected) or `unreviewed`.
+- `roletailor_ops.change_acceptance_daily(day, scope, source_stage, prompt_key, prompt_version, model, proposed, accepted, rejected, kept_by_default, unreviewed, acceptance_rate, kept_rate)`:
+  `acceptance_rate` = accepted / (accepted + rejected); `kept_rate` also counts
+  `kept_by_default`. This is the post-launch measure of edit relevance: compare it across
+  prompt versions and models before trusting an eval judge score.
 
 Grafana datasource uids: `prometheus` and `roletailor-pg`.

@@ -1,0 +1,8 @@
+Business Intelligence Analyst, Operations (invented example posting)
+Example Corp is hiring a BI analyst to support our supply chain team.
+Requirements:
+- 3+ years of experience in analytics or business intelligence
+- Strong SQL and a dashboard tool such as Tableau or Power BI
+- Experience reporting on delivery or logistics performance
+- Comfortable presenting findings to non-technical stakeholders
+Nice to have: Python, dbt, experience automating recurring reports.

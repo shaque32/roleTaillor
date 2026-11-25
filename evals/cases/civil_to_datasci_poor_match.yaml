@@ -1,0 +1,48 @@
+name: civil_to_datasci_poor_match
+family: engineering_other
+seniority: mid
+scenario: poor_match
+resume:
+  layout: classic
+  name: Wendell Achterberg
+  contact: Sacramento, CA | wendell.achterberg@example.org | (916) 555-0173
+  summary: >-
+    Civil engineer with six years of experience in site grading, drainage, and roadway design for
+    municipal and private development projects.
+  experience:
+    - company: Sierra Pacific Engineering
+      title: Civil Engineer II
+      dates: Mar 2021 – Present
+      bullets:
+        - Designed grading and storm drainage plans in Civil 3D for 14 residential subdivisions.
+        - Modelled floodplain impacts in HEC-RAS and prepared reports accepted by two county agencies.
+        - Produced AutoCAD construction drawings and quantity takeoffs for projects up to $6M.
+    - company: Rivergate Consulting
+      title: Staff Engineer
+      dates: Jul 2018 – Feb 2021
+      bullets:
+        - Drafted roadway plan-and-profile sheets for a 3.2-mile county improvement project.
+        - Collected and reconciled survey data for 30 sites using total station files.
+        - Tracked submittals and RFIs for field teams in Excel.
+  skills:
+    - {label: "Software:", value: "AutoCAD, Civil 3D, HEC-RAS, Excel"}
+  education:
+    - {school: "California State University, Sacramento", degree: B.S. Civil Engineering, year: "2018"}
+  certifications:
+    - Engineer-in-Training (EIT), California
+job: |
+  Data Scientist, Pricing
+  Build models that set and test prices across our marketplace.
+  Requirements:
+  - MS or PhD in a quantitative field, or equivalent experience
+  - Production machine learning in Python with scikit-learn
+  - Designing and analysing A/B testing programs
+  - Building dashboards in Tableau
+  - Strong SQL and statistics foundations
+canaries: [machine learning, scikit-learn, A/B testing, Tableau, Python]
+expect:
+  min_changes: 0
+  live_min_changes: 0
+  live_max_changes: 2
+  live_expected_gaps: [machine learning, Python]
+notes: Wrong field; the right outcome is few or no edits, with data-oriented wording only where honestly supported (survey data reconciliation, Excel), and the ML tools reported as gaps.

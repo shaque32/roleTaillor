@@ -1,0 +1,51 @@
+name: healthcare_data_coordinator_no_rn
+family: healthcare
+seniority: mid
+scenario: missing_credential
+resume:
+  layout: classic
+  name: Teresa Lindqvist
+  contact: Minneapolis, MN | teresa.l@example.org | (612) 555-0187
+  summary: >-
+    Clinical data coordinator with six years supporting clinical research and quality reporting, skilled in data validation and clinical workflows.
+  experience:
+    - company: North Star Health Research
+      title: Clinical Data Coordinator
+      dates: Apr 2021 – Present
+      bullets:
+        - Managed data entry and query resolution for four multi-site trials in REDCap, keeping query rates under 3%.
+        - Trained 30 research staff on case report form completion and protocol documentation.
+        - Built SQL checks that found 400+ inconsistent lab values before database lock.
+        - Worked with clinicians to map study visit workflows to data capture forms.
+    - company: Lakeview Community Hospital
+      title: Quality Data Analyst
+      dates: Jul 2018 – Mar 2021
+      bullets:
+        - Compiled monthly quality measures for nursing units and presented trends to unit managers.
+        - Audited 1,200 charts a year for documentation accuracy and reported findings to the quality committee.
+        - Supported the rollout of new documentation templates by gathering feedback from bedside staff.
+  skills:
+    - {label: "Data:", value: "REDCap, SQL, SAS, Excel, data validation, HIPAA"}
+    - {label: "Clinical:", value: "clinical workflows, protocol documentation, chart audits, quality reporting"}
+  education:
+    - {school: University of Minnesota, degree: B.S. Health Informatics, year: "2018"}
+job: |
+  Clinical Informatics Nurse
+  Bridge clinical practice and technology for our hospital system.
+  Responsibilities:
+  - Optimize clinical documentation and order workflows in the EHR
+  - Train nurses and physicians on new functionality
+  - Analyze quality and safety data to guide improvements
+  - Partner with IT on testing and go-lives
+  Requirements:
+  - Active RN licence in good standing
+  - Epic certification (Epic Clarity or Cogito preferred)
+  - 3+ years of clinical or informatics experience
+  - BLS certification
+  - Experience with Cerner is a plus
+canaries: [RN, Epic certification, Epic Clarity, BLS, Cerner]
+expect:
+  min_changes: 0
+  live_min_changes: 1
+  live_expected_gaps: [RN, Epic certification]
+notes: Hard licence and vendor certification requirements are not met; a good tailoring highlights workflow, training, and quality data experience and never implies a nursing licence.
