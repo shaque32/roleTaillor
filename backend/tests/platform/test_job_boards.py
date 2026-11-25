@@ -159,6 +159,26 @@ def test_ashby_falls_back_to_the_board_api(monkeypatch):
         _fetch(missing, transport, board_max_bytes=100_000)
 
 
+def test_malformed_json_ld_on_the_page_still_reaches_the_board_api(monkeypatch):
+    page = f"https://jobs.ashbyhq.com/ExampleCo/{UUID}"
+    api = "https://api.ashbyhq.com/posting-api/job-board/ExampleCo"
+    html = '<html><head><script type="application/ld+json">{"@graph": null}</script></head><body></body></html>'
+    transport, seen = _serve(monkeypatch, {
+        page: httpx.Response(200, text=html, headers={"content-type": "text/html"}),
+        api: _json("ashby_job_board.json"),
+    })
+    job = _fetch(page, transport)
+    assert job.title == "Analytics Engineer" and seen == [page, api]
+
+
+def test_json_ld_with_non_string_fields_is_tolerated():
+    html = ('<html><body><script type="application/ld+json">'
+            '{"@type": "JobPosting", "title": 7, "hiringOrganization": {"name": ["x"]},'
+            f' "description": "<p>{LONG}</p>"}}</script></body></html>')
+    job = job_fetch.extract_job(html)
+    assert (job.title, job.company) == (None, None) and "Kafka" in job.text
+
+
 LONG = "Build reliable data pipelines with Kafka and Spark. " * 10
 GENERIC_PAGE = httpx.Response(
     200, headers={"content-type": "text/html"},

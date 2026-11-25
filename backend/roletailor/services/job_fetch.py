@@ -104,6 +104,10 @@ def _clean(text: str) -> str:
     return "\n".join(line for line in lines if line)
 
 
+def _str_or_none(value: object) -> str | None:
+    return value if isinstance(value, str) else None
+
+
 def _is_job_posting(item: object) -> bool:
     if not isinstance(item, dict) or not item.get("description"):
         return False
@@ -120,7 +124,8 @@ def _json_ld_job(soup: BeautifulSoup) -> FetchedJob | None:
         if isinstance(data, list):
             candidates = data
         elif isinstance(data, dict):
-            candidates = [data, *data.get("@graph", [])]
+            graph = data.get("@graph")
+            candidates = [data, *(graph if isinstance(graph, list) else [])]
         else:
             continue
         for item in candidates:
@@ -128,8 +133,8 @@ def _json_ld_job(soup: BeautifulSoup) -> FetchedJob | None:
                 org = item.get("hiringOrganization")
                 return FetchedJob(
                     text=job_boards.html_to_text(item["description"]),
-                    title=item.get("title"),
-                    company=org.get("name") if isinstance(org, dict) else None,
+                    title=_str_or_none(item.get("title")),
+                    company=_str_or_none(org.get("name")) if isinstance(org, dict) else None,
                 )
     return None
 
