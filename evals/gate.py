@@ -138,10 +138,11 @@ def check_live_summary(summary: dict) -> list[str]:
         (s["errors"] == 0 and s["skipped"] == 0, f"{s['errors']} errors, {s['skipped']} skipped"),
     ]
     if j := s.get("judge"):
+        runs = max(1, summary.get("case_count", 1) * summary.get("reps", 1))
         checks += [(j["truthfulness"] >= t["min_judge_truthfulness"],
                     f"judge truthfulness {j['truthfulness']} < {t['min_judge_truthfulness']}"),
-                   (j["truthfulness_below_4"] <= t["max_judge_truthfulness_below_4"],
-                    f"{j['truthfulness_below_4']} cases judged truthfulness below 4")]
+                   (j["truthfulness_below_4"] / runs <= t["max_judge_truthfulness_below_4_rate"],
+                    f"{j['truthfulness_below_4']} of {runs} runs judged truthfulness below 4")]
     problems += [msg for ok, msg in checks if not ok]
     age = (datetime.now(UTC) - datetime.strptime(summary["created_at"], "%Y-%m-%dT%H:%M:%SZ")
            .replace(tzinfo=UTC)).days

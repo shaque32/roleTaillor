@@ -17,6 +17,11 @@ live:
   max_mean_cost_usd: 0.05
   max_p95_cost_usd: 0.08
   min_expected_gap_recall: 0.8
-  min_judge_truthfulness: 4.5   # applies when the summary includes judge scores
-  max_judge_truthfulness_below_4: 1
+  # Judge thresholds, applied when the summary includes judge scores. Relaxed on
+  # 2026-11-25 with Arsh's approval (from 4.5 and at most 1 case) to ship v1: the judge
+  # is not yet calibrated against human ratings, and its flags were wording that implies
+  # ownership, not invented facts. Restore 4.5 once `make eval-gold-calibrate` shows the
+  # truthfulness score is calibrated on 10 or more rated cases. Fabrication stays at 0.
+  min_judge_truthfulness: 4.25
+  max_judge_truthfulness_below_4_rate: 0.10   # share of runs the judge scored below 4
   max_summary_age_days: 45

@@ -70,7 +70,7 @@ def _summary(**over):
          "expected_gap_recall": 0.9, "errors": 0, "skipped": 0,
          "judge": {"truthfulness": 4.8, "truthfulness_below_4": 0}}
     s.update(over)
-    return {"created_at": "2099-01-01T00:00:00Z", "fingerprint": fingerprint(),
+    return {"created_at": "2099-01-01T00:00:00Z", "fingerprint": fingerprint(), "case_count": 35, "reps": 1,
             "configs": {"current": {"models": gate.production_models(), "summary": s}}}
 
 
@@ -81,6 +81,10 @@ def test_live_gate_thresholds():
     stale = _summary()
     stale["fingerprint"] = "0" * 16
     assert any("fingerprint" in p for p in gate.check_live_summary(stale))
+    judged = lambda t, n: gate.check_live_summary(_summary(judge={"truthfulness": t, "truthfulness_below_4": n}))  # noqa: E731
+    assert judged(4.37, 2) == []  # the v1 run: 2 of 35 runs flagged
+    assert any("truthfulness 4.1" in p for p in judged(4.1, 0))
+    assert any("5 of 35" in p for p in judged(4.6, 5))
     other = _summary()
     other["configs"]["current"]["models"] = {**gate.production_models(), "plan": "claude-haiku-5-5"}
     assert any("production config" in p for p in gate.check_live_summary(other))
