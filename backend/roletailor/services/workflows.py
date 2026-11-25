@@ -33,17 +33,21 @@ def _get_owned(conn: Connection, principal: Principal, workflow_id: UUID, *, loc
     )
     if row is None:
         raise not_found("Workflow")
-    # A workflow whose resume was erased by the retention purge is gone for its owner.
-    # Separate statement, after the workflow lock: same lock order as retention.
+    _ensure_resume_live(conn, row, hold=lock)
+    return row
+
+
+def _ensure_resume_live(conn: Connection, workflow: dict, *, hold: bool) -> None:
+    """A workflow whose resume was erased by the retention purge is gone for its owner.
+    Separate statement, after the workflow lock: same lock order as retention."""
     live = fetch_one(
         conn,
         "SELECT 1 FROM resumes r JOIN resume_versions v ON v.resume_id = r.id"
-        " WHERE v.id = :version AND r.purged_at IS NULL" + (" FOR SHARE OF r" if lock else ""),
-        {"version": row["resume_version_id"]},
+        " WHERE v.id = :version AND r.purged_at IS NULL" + (" FOR SHARE OF r" if hold else ""),
+        {"version": workflow["resume_version_id"]},
     )
     if live is None:
         raise not_found("Workflow")
-    return row
 
 
 def _set_status(conn: Connection, workflow_id: UUID, status: str, draft_state: dict | None = None) -> dict:
@@ -105,6 +109,7 @@ def create(
             if (existing["resume_version_id"], existing["job_posting_id"]) != (resume_version_id, job_posting_id):
                 raise AppError(409, "idempotency_conflict",
                                "This Idempotency-Key was already used for a different request.")
+            _ensure_resume_live(conn, existing, hold=True)
             workflow = existing
             if existing["status"] == "draft":  # an earlier enqueue failed; try again
                 workflow = _set_status(conn, existing["id"], "queued")

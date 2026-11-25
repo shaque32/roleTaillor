@@ -62,13 +62,15 @@ def purge_deleted_resumes() -> dict[str, int]:
     try:
         if not client.set(PURGE_LOCK_KEY, "1", nx=True, ex=PURGE_LOCK_SECONDS):
             log.info("retention purge already running, skipping")
-            return {"purged": 0, "skipped": 0, "failed": 0, "objects_deleted": 0}
+            return {"purged": 0, "skipped": 0, "failed": 0, "objects_deleted": 0,
+                    "objects_pending": 0}
         try:
             summary = retention.purge_due()
         finally:
             client.delete(PURGE_LOCK_KEY)
         return {"purged": summary.purged, "skipped": summary.skipped, "failed": summary.failed,
-                "objects_deleted": summary.objects_deleted}
+                "objects_deleted": summary.objects_deleted,
+                "objects_pending": summary.objects_pending}
     finally:
         client.close()
         correlation_id.reset(token)

@@ -137,6 +137,13 @@ def test_deleted_resume_is_erased_after_the_retention_period(make_user, classic_
     audit_row = rows(org, "SELECT resource_id, metadata FROM audit_logs WHERE action = 'resume.purge'")[0]
     assert str(audit_row["resource_id"]) == rid and audit_row["metadata"]["files"] == len(objects)
 
+    # An idempotent replay of the original request does not hand the workflow back.
+    assert scalar(org, "SELECT count(*) FROM tailoring_workflows WHERE id = :id", id=wid) == 1
+    key = scalar(org, "SELECT idempotency_key FROM tailoring_workflows WHERE id = :id", id=wid)
+    replay = user.post("/v1/workflows", headers={"Idempotency-Key": key}, json={
+        "resume_version_id": made["version"]["id"], "job_posting_id": made["job"]["id"]})
+    assert replay.status_code == 404
+
     # Nothing left to do on the next night.
     with db.global_tx() as conn:
         due = conn.execute(text(
@@ -283,3 +290,36 @@ def test_daily_run_cap_follows_the_plan(make_user, client, settings):
 
     assert [c == 429 for c in codes(free, 2)] == [False, True]
     assert [c == 429 for c in codes(paying, 4)] == [False, False, False, True]
+
+
+def test_failed_object_deletes_are_retried(make_user, classic_docx, monkeypatch):
+    user = make_user()
+    rid = upload_resume(user, classic_docx)["resume"]["id"]
+    obj = rows(user.org_id, "SELECT object_key, object_version FROM stored_files")[0]
+    user.delete(f"/v1/resumes/{rid}")
+    backdate(user.org_id, rid, 31)
+    storage = get_storage()
+    real_delete = storage.delete
+
+    def pending():
+        with db.global_tx() as conn:
+            return conn.execute(text("SELECT attempts FROM pending_object_deletions WHERE object_key = :k"),
+                                {"k": obj["object_key"]}).all()
+
+    def broken(key, version=None):
+        if key == obj["object_key"]:
+            raise OSError("object store unavailable")
+        real_delete(key, version)
+
+    monkeypatch.setattr(type(storage), "delete", lambda self, key, version=None: broken(key, version))
+    summary = retention.purge_due()
+    assert summary.objects_pending >= 1
+    assert scalar(user.org_id, "SELECT purged_at FROM resumes WHERE id = :id", id=rid) is not None
+    assert [r[0] for r in pending()] == [1]
+    assert storage.get(obj["object_key"], obj["object_version"])  # still there, still queued
+
+    monkeypatch.undo()
+    retention.purge_due()  # the resume is no longer due; the queue alone drives the retry
+    assert pending() == []
+    with pytest.raises(FileNotFoundError):
+        storage.get(obj["object_key"], obj["object_version"])

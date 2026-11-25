@@ -37,12 +37,14 @@ class PurgeSummary:
     skipped: int = 0
     failed: int = 0
     objects_deleted: int = 0
+    objects_pending: int = 0
 
 
 def _purge_resume(conn: Connection, org_id: UUID | str, resume_id: UUID | str,
-                  days: int) -> list[tuple[str, str | None]] | None:
-    """Erase one resume inside the caller's tenant transaction. Returns the storage
-    objects to delete after commit, or None when the resume must be left alone."""
+                  days: int) -> int | None:
+    """Erase one resume inside the caller's tenant transaction. Its storage objects are
+    queued in pending_object_deletions in the same transaction. Returns how many were
+    queued, or None when the resume must be left alone."""
     # Lock order is workflows, then the resume: the same order request paths use.
     conn.execute(
         text("SELECT w.id FROM tailoring_workflows w"
@@ -98,24 +100,52 @@ def _purge_resume(conn: Connection, org_id: UUID | str, resume_id: UUID | str,
     ):
         conn.execute(text(statement), {**p, "name": PURGED_NAME})
 
-    objects: list[tuple[str, str | None]] = []
+    queued = 0
     if file_ids:
-        # A file row goes only when nothing else points at it any more.
-        objects = [(r["object_key"], r["object_version"]) for r in fetch_all(
-            conn,
-            "DELETE FROM stored_files f WHERE f.id = ANY(:ids)"
-            " AND NOT EXISTS (SELECT 1 FROM resume_versions v WHERE v.source_file_id = f.id)"
-            " AND NOT EXISTS (SELECT 1 FROM resume_exports e WHERE e.file_id = f.id)"
-            " RETURNING f.object_key, f.object_version",
+        # A file row goes only when nothing else points at it any more. The object keys
+        # move to the deletion queue atomically with the rows that named them.
+        queued = conn.execute(
+            text("WITH gone AS (DELETE FROM stored_files f WHERE f.id = ANY(:ids)"
+                 " AND NOT EXISTS (SELECT 1 FROM resume_versions v WHERE v.source_file_id = f.id)"
+                 " AND NOT EXISTS (SELECT 1 FROM resume_exports e WHERE e.file_id = f.id)"
+                 " RETURNING f.object_key, f.object_version)"
+                 " INSERT INTO pending_object_deletions (object_key, object_version)"
+                 " SELECT object_key, object_version FROM gone"),
             {"ids": file_ids},
-        )]
+        ).rowcount
     audit.record(
         conn, org_id=org_id, action="resume.purge", resource_type="resume", resource_id=resume_id,
         metadata={"retention_days": days, "versions": len(fetch_all(
             conn, "SELECT 1 FROM resume_versions WHERE resume_id = :rid", p)),
-            "workflows": len(workflows), "files": len(objects)},
+            "workflows": len(workflows), "files": queued},
     )
-    return objects
+    return queued
+
+
+def delete_pending_objects(*, limit: int = 5000) -> tuple[int, int]:
+    """Delete queued storage objects; returns (deleted, still pending). A row leaves the
+    queue only after the object store confirmed the delete, so failures and crashes are
+    retried on the next run. Deleting an object that is already gone succeeds."""
+    with db.global_tx() as conn:
+        pending = fetch_all(
+            conn, "SELECT id, object_key, object_version FROM pending_object_deletions"
+            " ORDER BY id LIMIT :limit", {"limit": limit})
+    storage = get_storage()
+    deleted = 0
+    for row in pending:
+        try:
+            storage.delete(row["object_key"], row["object_version"])
+        except Exception:
+            log.exception("could not delete stored object, will retry",
+                          extra={"object_key": row["object_key"]})
+            with db.global_tx() as conn:
+                conn.execute(text("UPDATE pending_object_deletions SET attempts = attempts + 1"
+                                  " WHERE id = :id"), {"id": row["id"]})
+            continue
+        with db.global_tx() as conn:
+            conn.execute(text("DELETE FROM pending_object_deletions WHERE id = :id"), {"id": row["id"]})
+        deleted += 1
+    return deleted, len(pending) - deleted
 
 
 def purge_due(*, limit: int | None = None) -> PurgeSummary:
@@ -130,28 +160,23 @@ def purge_due(*, limit: int | None = None) -> PurgeSummary:
             " roletailor.resumes_due_for_purge(make_interval(days => :days), :limit)",
             {"days": days, "limit": limit or settings.retention_purge_batch_size},
         )
-    storage = get_storage()
-    purged = skipped = failed = deleted = 0
+    purged = skipped = failed = 0
     for row in due:
         try:
             with db.tenant_tx(row["organization_id"]) as conn:
-                objects = _purge_resume(conn, row["organization_id"], row["resume_id"], days)
+                queued = _purge_resume(conn, row["organization_id"], row["resume_id"], days)
         except Exception:
             failed += 1
             log.exception("could not purge resume", extra={"resume_id": str(row["resume_id"])})
             continue
-        if objects is None:
+        if queued is None:
             skipped += 1
-            continue
-        purged += 1
-        for key, version in objects:
-            try:
-                storage.delete(key, version)
-                deleted += 1
-            except Exception:  # the rows are gone; leftovers are swept by bucket lifecycle rules
-                log.exception("could not delete stored object", extra={"object_key": key})
-    summary = PurgeSummary(purged, skipped, failed, deleted)
+        else:
+            purged += 1
+    # Also picks up objects an earlier run queued but could not delete.
+    deleted, pending = delete_pending_objects()
+    summary = PurgeSummary(purged, skipped, failed, deleted, pending)
     log.info("retention.purge", extra={"audit_action": "retention.purge", "due": len(due),
                                        "purged": purged, "skipped": skipped, "failed": failed,
-                                       "objects_deleted": deleted})
+                                       "objects_deleted": deleted, "objects_pending": pending})
     return summary

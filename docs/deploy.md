@@ -109,9 +109,10 @@ Repeat for `prod` with the Basic Postgres plan and live Stripe keys.
 
 ## Data retention and spend limits
 
-**Deleted resumes.** Deleting a resume hides it at once. The worker's nightly job (`purge_deleted_resumes`, 08:17 UTC, `RT_RETENTION_PURGE_HOUR_UTC`) erases it for good `RT_RESUME_RETENTION_DAYS` days later (default 30): uploaded and generated files, every version's text, proposed rewrites, feedback, embeddings, exports and share links. A skeleton without resume content stays (ids, timestamps, scores, usage, cost and audit records), because free-quota and payment accounting are counted from those rows. Deleting the whole account still removes everything at once.
+**Deleted resumes.** Deleting a resume hides it at once. The worker's nightly job (`purge_deleted_resumes`, 08:17 UTC, `RT_RETENTION_PURGE_HOUR_UTC`) erases it once `RT_RESUME_RETENTION_DAYS` days have passed (default 30). The period sets when a resume becomes eligible, not an exact time: the job runs once a night, and a resume with a queued or running tailoring is left for a later night. Erased: uploaded and generated files, every version's text, proposed rewrites, feedback, embeddings, exports and share links. A skeleton without resume content stays (ids, timestamps, scores, usage, cost and audit records), because free-quota and payment accounting are counted from those rows. Deleting the whole account still removes everything at once.
 
 - The schedule runs inside the worker process (`celery worker -B`). If you scale the worker to several machines each one fires the schedule, and a Redis lock lets only one run the purge.
+- Storage objects are deleted through a queue (`pending_object_deletions`). A delete that fails, or a worker that stops mid-run, is retried on the next run; `objects_pending` in the `retention.purge` log line should return to 0.
 - Run it by hand with `celery -A roletailor.worker.celery_app call roletailor.worker.tasks.purge_deleted_resumes` from a worker machine.
 - Database backups are outside the job's reach. An erased resume leaves them only when the backup itself expires, so keep the provider's backup retention short enough for your privacy notice. The same goes for object-storage versioning, if you turn it on.
 

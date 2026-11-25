@@ -350,7 +350,7 @@ def get_resume_version(principal: Principal, resume_id: UUID, version_id: UUID) 
 
 def restore_version(principal: Principal, resume_id: UUID, version_id: UUID) -> dict:
     with db.tenant_tx(principal.org_id) as conn:
-        get_owned_resume(conn, principal, resume_id)
+        get_owned_resume(conn, principal, resume_id, lock=True)  # serializes with the purge
         source = _version_of_resume(conn, resume_id, version_id)
         row = insert_version(
             conn, resume_id, content=source["content"],

@@ -29,4 +29,18 @@ $$;
 REVOKE ALL ON FUNCTION roletailor.resumes_due_for_purge(interval, integer) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION roletailor.resumes_due_for_purge(interval, integer) TO rt_app;
 
+-- Storage objects whose rows a purge has removed. The row is written in the purge's own
+-- transaction and removed only once the object store confirms the delete, so a failed
+-- delete or a worker crash is retried by the next run instead of leaving the file behind.
+-- Holds object keys only (no tenant data), so like stripe_webhook_events it is not
+-- tenant scoped.
+CREATE TABLE roletailor.pending_object_deletions (
+    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    object_key text NOT NULL,
+    object_version text,
+    attempts integer NOT NULL DEFAULT 0,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+GRANT SELECT, INSERT, UPDATE, DELETE ON roletailor.pending_object_deletions TO rt_app;
+
 COMMIT;

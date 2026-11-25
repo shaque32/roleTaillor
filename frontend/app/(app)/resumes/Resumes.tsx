@@ -47,7 +47,7 @@ export function Resumes() {
       await api.archiveResume(archiving.id);
       setData((xs) => xs?.filter((r) => r.id !== archiving.id));
       setArchiving(null);
-      toast.success("Resume deleted. It will be erased for good in 30 days.");
+      toast.success("Resume deleted. It will be erased for good after the retention period.");
     } catch (err) {
       toast.error(err);
     } finally {
@@ -162,7 +162,7 @@ export function Resumes() {
         onClose={() => setArchiving(null)}
         size="sm"
         title="Delete this resume?"
-        description={`“${archiving?.name ?? ""}” will be removed from your list now. After 30 days it is erased for good, together with every tailored version, export and share link made from it.`}
+        description={`“${archiving?.name ?? ""}” will be removed from your list now. After the retention period it is erased for good, together with every tailored version, export and share link made from it.`}
         footer={
           <>
             <Button variant="secondary" onClick={() => setArchiving(null)}>
