@@ -4,11 +4,13 @@ import { useRef, useState } from "react";
 import { FileUp } from "lucide-react";
 import { api } from "@/lib/api";
 import type { ResumeWithVersion } from "@/lib/types";
-import { Alert, Button, Input } from "@/components/ui";
+import { Alert, Button, Input, Textarea } from "@/components/ui";
 import { cx } from "@/lib/format";
 
 const ACCEPT = ".docx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const MAX_BYTES = 10 * 1024 * 1024;
+const MIN_TEXT_CHARS = 200;
+const MAX_TEXT_CHARS = 50_000;
 
 function validate(file: File): string | null {
   const ok = /\.(docx|pdf)$/i.test(file.name);
@@ -24,6 +26,30 @@ export function ResumeUpload({ onUploaded, submitLabel = "Upload resume" }: { on
   const [drag, setDrag] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [mode, setMode] = useState<"file" | "text">("file");
+  const [text, setText] = useState("");
+  const [textName, setTextName] = useState("");
+  const meaningful = text.replace(/\s/g, "").length;
+  const textError = text.length > MAX_TEXT_CHARS ? `That is over the ${MAX_TEXT_CHARS.toLocaleString()} character limit.` : null;
+  const textReady = meaningful >= MIN_TEXT_CHARS && !textError;
+
+  function switchMode(next: "file" | "text") {
+    setMode(next);
+    setError(null);
+  }
+
+  async function submitText() {
+    if (!textReady) return;
+    setBusy(true);
+    setError(null);
+    try {
+      onUploaded(await api.createFromText(text, textName.trim() || "Pasted resume"));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not save your resume.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   function pick(f: File | undefined) {
     if (!f) return;
@@ -47,8 +73,58 @@ export function ResumeUpload({ onUploaded, submitLabel = "Upload resume" }: { on
     }
   }
 
+  const tabs = [
+    { id: "file", label: "Upload a file" },
+    { id: "text", label: "Paste text" },
+  ] as const;
+  const toggle = (
+    <div role="group" aria-label="How to add your resume" className="inline-flex rounded-md border border-slate-300 bg-white p-0.5">
+      {tabs.map((t) => (
+        <button
+          key={t.id}
+          type="button"
+          aria-pressed={mode === t.id}
+          onClick={() => switchMode(t.id)}
+          className={cx(
+            "rounded px-3 py-1.5 text-sm font-medium transition-colors",
+            mode === t.id ? "bg-brand-50 text-brand-700" : "text-ink-muted hover:text-ink",
+          )}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+
+  if (mode === "text") {
+    return (
+      <div className="space-y-4">
+        {toggle}
+        <Textarea
+          label="Resume text"
+          rows={14}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          error={textError ?? undefined}
+          hint="Paste the full text of your resume. We'll format it with a clean, ATS-friendly template."
+          placeholder="Jane Doe&#10;jane@example.com&#10;&#10;EXPERIENCE&#10;…"
+        />
+        <p className="text-xs text-ink-muted" aria-live="polite">
+          {text.length.toLocaleString()} / {MAX_TEXT_CHARS.toLocaleString()} characters
+          {meaningful < MIN_TEXT_CHARS && text.length > 0 && ` · add a bit more (at least ${MIN_TEXT_CHARS} non-space characters)`}
+        </p>
+        <Input label="Resume name" value={textName} onChange={(e) => setTextName(e.target.value)} placeholder="Pasted resume" hint="Only you see this, e.g. “Product Manager – 2026”." />
+        {error && <Alert tone="error">{error}</Alert>}
+        <Button onClick={submitText} disabled={!textReady} loading={busy}>
+          {busy ? "Reading your resume…" : submitLabel}
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
+      {toggle}
       <div
         onDragOver={(e) => {
           e.preventDefault();

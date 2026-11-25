@@ -133,3 +133,64 @@ def test_extracts_json_ld_job_posting():
             '</script></body></html>')
     job = job_fetch.extract_job(html)
     assert (job.title, job.company) == ("ML Engineer", "Fabrikam")
+
+
+PASTED_RESUME = """Ada Lovelace
+ada@example.com | London | https://ada.dev
+
+SUMMARY
+Data engineer with 7 years of experience building streaming data platforms.
+
+EXPERIENCE
+Senior Data Engineer, Northwind (2021 - Present)
+• Built Kafka pipelines serving 40M events/day with exactly-once delivery
+• Cut nightly batch latency by 60% by moving jobs to Spark Structured Streaming
+• Mentored four engineers and led the data quality working group
+Data Engineer, Contoso (2017 - 2021)
+• Designed the Airflow orchestration layer for 200+ daily pipelines
+• Modelled warehouse data in dbt and documented lineage for analysts
+
+EDUCATION
+BSc Mathematics, University of London (2015)
+
+SKILLS
+Python, SQL, Spark, Kafka, Airflow, dbt, Terraform
+"""
+
+
+def test_paste_resume_workflow_and_export(make_user, client, monkeypatch):
+    from roletailor.ai import gateway as gateway_module
+    from roletailor.documents import read_docx
+    from roletailor.pipeline import orchestrator
+    from tests.platform import stubs
+    from tests.platform.test_workflows import start
+
+    monkeypatch.setattr(orchestrator, "tailor", stubs.stub_tailor)
+    monkeypatch.setattr(gateway_module, "build_gateway", stubs.stub_build_gateway)
+
+    user = make_user()
+    r = user.post("/v1/resumes/text", json={"text": PASTED_RESUME, "name": ""})
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["resume"]["name"] == "Pasted resume" and body["resume"]["origin"] == "upload"
+    version = body["version"]
+    assert version["source_format"] == "text" and version["source_file_id"] is None
+    texts = [b["text"] for b in version["blocks"]]
+    assert "Built Kafka pipelines serving 40M events/day with exactly-once delivery" in texts
+    assert any(b["is_heading"] and b["text"] == "EXPERIENCE" for b in version["blocks"])
+
+    short = user.post("/v1/resumes/text", json={"text": "too short " * 5})
+    assert short.status_code == 422 and short.json()["error"]["code"] == "resume_text_too_short"
+    long = user.post("/v1/resumes/text", json={"text": "x" * 50_001})
+    assert long.status_code == 413 and long.json()["error"]["code"] == "resume_text_too_long"
+
+    workflow = start(user, version["id"], create_job(user)["id"])
+    assert workflow.status_code == 202, workflow.text
+    assert workflow.json()["status"] == "completed"
+    detail = user.get(f"/v1/workflows/{workflow.json()['id']}").json()
+    gid = detail["latest"]["id"]
+    export = user.post(f"/v1/generated/{gid}/exports", json={"kind": "docx"})
+    assert export.status_code == 201, export.text
+    download = client.get(export.json()["download_url"].removeprefix("http://localhost:8000"))
+    assert download.status_code == 200
+    assert any("Kafka" in b.text for b in read_docx(download.content).blocks)
