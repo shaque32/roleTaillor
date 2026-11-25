@@ -121,5 +121,17 @@ def generation_rate_limit(request: Request, principal: CurrentPrincipal) -> None
     settings = get_settings()
     enforce_rate_limit(request, "generate", str(principal.user_id), settings.rate_limit_generation_per_minute,
                        "Too many generations at once. Try again shortly.")
-    enforce_rate_limit(request, "generate-day", str(principal.org_id), settings.generation_runs_per_org_per_day,
+    enforce_rate_limit(request, "generate-day", str(principal.org_id), _runs_per_day(principal),
                        "You have reached today's generation limit. Try again tomorrow.", window_s=86_400)
+
+
+def _runs_per_day(principal: Principal) -> int:
+    """The organization's daily run cap. The plan is only looked up when per-plan
+    overrides are configured; otherwise this costs no query."""
+    from roletailor import db
+    from roletailor.services import billing
+
+    if not get_settings().plan_limits:
+        return billing.plan_limits(None).runs_per_day
+    with db.tenant_tx(principal.org_id) as conn:
+        return billing.plan_limits(conn).runs_per_day

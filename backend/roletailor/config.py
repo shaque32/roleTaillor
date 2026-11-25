@@ -9,6 +9,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ENVIRONMENTS = frozenset({"dev", "test", "staging", "prod"})
 EMAIL_PROVIDERS = frozenset({"console", "memory", "resend"})
+PLANS = frozenset({"free", "subscription"})
+PLAN_LIMIT_KEYS = frozenset({"runs_per_day", "iterations"})
 
 
 class Settings(BaseSettings):
@@ -92,6 +94,15 @@ class Settings(BaseSettings):
     # and only a workflow's first run is ever charged.
     generation_runs_per_org_per_day: int = 60
     max_iterations_per_workflow: int = 15
+    # Per-plan overrides of the two ceilings above, as JSON. Plans are "free" and
+    # "subscription"; keys are "runs_per_day" and "iterations". Anything left out uses
+    # the defaults, e.g. RT_PLAN_LIMITS={"subscription": {"runs_per_day": 200}}
+    plan_limits: dict[str, dict[str, int]] = {}
+    # A deleted resume is erased for good this many days later, by the nightly purge
+    # (worker beat schedule, hour in UTC).
+    resume_retention_days: int = 30
+    retention_purge_hour_utc: int = 8
+    retention_purge_batch_size: int = 500
     # Request bodies. Uploads get max_upload_bytes plus multipart overhead.
     max_json_body_bytes: int = 512 * 1024
     # Client address for rate limiting. `client_ip_header` is a header the platform edge
@@ -160,6 +171,40 @@ class Settings(BaseSettings):
         if problems:
             raise ValueError("unsafe configuration outside dev/test: " + "; ".join(problems))
         return self
+
+    @field_validator("plan_limits")
+    @classmethod
+    def _check_plan_limits(cls, v: dict[str, dict[str, int]]) -> dict[str, dict[str, int]]:
+        for plan, limits in v.items():
+            if plan not in PLANS:
+                raise ValueError(f"RT_PLAN_LIMITS: unknown plan {plan!r}, expected one of {sorted(PLANS)}")
+            for key, value in limits.items():
+                if key not in PLAN_LIMIT_KEYS:
+                    raise ValueError(f"RT_PLAN_LIMITS: unknown limit {key!r} for plan {plan!r},"
+                                     f" expected one of {sorted(PLAN_LIMIT_KEYS)}")
+                if value < 1:
+                    raise ValueError(f"RT_PLAN_LIMITS: {plan}.{key} must be at least 1")
+        return v
+
+    @field_validator("resume_retention_days")
+    @classmethod
+    def _check_retention(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("RT_RESUME_RETENTION_DAYS must be at least 1")
+        return v
+
+    @field_validator("retention_purge_hour_utc")
+    @classmethod
+    def _check_purge_hour(cls, v: int) -> int:
+        if not 0 <= v <= 23:
+            raise ValueError("RT_RETENTION_PURGE_HOUR_UTC must be between 0 and 23")
+        return v
+
+    def limits_for_plan(self, plan: str) -> tuple[int, int]:
+        """(runs per organization per day, iterations per workflow) for a plan."""
+        override = self.plan_limits.get(plan, {})
+        return (override.get("runs_per_day", self.generation_runs_per_org_per_day),
+                override.get("iterations", self.max_iterations_per_workflow))
 
     @field_validator("models_config_path", "storage_local_dir")
     @classmethod

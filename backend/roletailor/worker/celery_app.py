@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from celery import Celery
+from celery.schedules import crontab
 from celery.signals import setup_logging, worker_ready
 
 from roletailor.config import get_settings
@@ -20,6 +21,15 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1,  # generations are long; do not hoard them
     broker_connection_retry_on_startup=True,
     task_always_eager=settings.celery_task_always_eager,
+    timezone="UTC",
+    # Runs only where the worker is started with -B (see deploy/fly/api.toml). The task
+    # takes a lock, so a second scheduler by mistake cannot run the purge twice at once.
+    beat_schedule={
+        "purge-deleted-resumes": {
+            "task": "roletailor.worker.tasks.purge_deleted_resumes",
+            "schedule": crontab(hour=settings.retention_purge_hour_utc, minute=17),
+        },
+    },
 )
 
 

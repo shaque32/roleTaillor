@@ -40,7 +40,7 @@ They return `403 email_unverified` until the address is confirmed (`user.email_v
 | POST | /resumes/guided | `{name, contact, sections:[{kind, title, items:[...]}]}` | `{resume, version}`. `contact` is the `Contact` model (`full_name` required). Items by section kind: experience `{company,title,location,start,end,bullets[]}`, education `{institution,degree,field,start,end,details}`, certifications `{name,issuer,date}`, projects `{name,link,description,bullets[]}`, anything else `{text}` (a bare string is accepted as `{text}`). The form is rendered to DOCX and re-parsed, so version blocks use DOCX ids (`p{n}`) |
 | GET | /resumes/{id} | | resume with `versions[]` |
 | PATCH | /resumes/{id} | `{name}` | resume |
-| DELETE | /resumes/{id} | | 204 (archives) |
+| DELETE | /resumes/{id} | | 204 (hides the resume now; content and files are erased after `RT_RESUME_RETENTION_DAYS`, default 30) |
 | GET | /resumes/{id}/versions/{vid} | | version |
 | POST | /resumes/{id}/versions/{vid}/restore | | new version copied from `vid` |
 

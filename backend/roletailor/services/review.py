@@ -21,12 +21,18 @@ from roletailor.storage import DOCX_MEDIA_TYPE, PDF_MEDIA_TYPE
 ExportKind = Literal["docx", "pdf", "ats_report", "feedback_report"]
 
 
-def _get_generated(conn: Connection, principal: Principal, generated_id: UUID) -> dict:
+def _get_generated(conn: Connection, principal: Principal, generated_id: UUID, *,
+                   hold=False) -> dict:
+    """`hold` share-locks the resume until commit, so the retention purge (which takes
+    the row FOR UPDATE first) cannot erase it while the caller writes new content."""
     row = fetch_one(
         conn,
         f"SELECT {', '.join('g.' + c.strip() for c in GENERATED_COLUMNS.split(','))}"
         " FROM generated_resumes g JOIN tailoring_workflows w ON w.id = g.workflow_id"
-        " WHERE g.id = :id AND w.requested_by = :uid",
+        " JOIN resume_versions v ON v.id = g.resume_version_id"
+        " JOIN resumes r ON r.id = v.resume_id"
+        " WHERE g.id = :id AND w.requested_by = :uid AND r.purged_at IS NULL"
+        + (" FOR SHARE OF r" if hold else ""),
         {"id": generated_id, "uid": principal.user_id},
     )
     if row is None:
@@ -116,7 +122,7 @@ def _export_bytes(conn: Connection, generated: dict, kind: ExportKind) -> tuple[
 
 def create_export(principal: Principal, generated_id: UUID, kind: ExportKind) -> dict:
     with db.tenant_tx(principal.org_id) as conn:
-        generated = _get_generated(conn, principal, generated_id)
+        generated = _get_generated(conn, principal, generated_id, hold=True)
         data, media_type, name = _export_bytes(conn, generated, kind)
         stored = files.store(conn, principal.org_id, data, media_type=media_type, filename=name,
                              category="exports")
