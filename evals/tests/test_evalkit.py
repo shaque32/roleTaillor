@@ -91,3 +91,15 @@ def test_relative_config_paths_resolve_from_any_directory(monkeypatch, tmp_path)
     monkeypatch.setenv("RT_MODELS_CONFIG_PATH", "config/models.yaml")
     assert Settings().models_config_path == ROOT / "config" / "models.yaml"
     assert Settings().models_config_path.is_file()
+
+
+def test_eval_files_never_contain_a_key(tmp_path, monkeypatch):
+    from evalkit import safe_write
+
+    shaped = "sk-ant-" + "api03-" + "A1b2C3d4E5f6G7h8"
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "plain-looking-value-123")
+    safe_write.write_json(tmp_path / "r.json", {"error": f"401 for {shaped}", "note": "plain-looking-value-123"})
+    safe_write.write_text(tmp_path / "r.md", f"key {shaped} rejected")
+    written = (tmp_path / "r.json").read_text() + (tmp_path / "r.md").read_text()
+    assert shaped not in written and "plain-looking-value-123" not in written
+    assert written.count("[REDACTED]") == 3

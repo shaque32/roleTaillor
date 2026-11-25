@@ -12,7 +12,6 @@ are not committed; resume text never goes anywhere else.
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import sys
 from datetime import UTC, datetime
@@ -23,7 +22,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / "backend"), str(ROOT / "evals")]
 
-from evalkit import gold  # noqa: E402
+from evalkit import gold, safe_write  # noqa: E402
 from run_evals import Budget, build_judge_ctx, load_dotenv  # noqa: E402
 
 from roletailor.ai.cache import MemoryCache  # noqa: E402
@@ -89,7 +88,7 @@ def review_markdown(case: str, changes: list[dict], gaps: list[str]) -> str:
 
 
 def write_json(path: Path, data) -> None:
-    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+    safe_write.write_json(path, data, ensure_ascii=False)
 
 
 def run_one(case: Path, *, settings: Settings, base: dict, judge_ctx: dict, budget: Budget) -> dict:
@@ -120,7 +119,7 @@ def run_one(case: Path, *, settings: Settings, base: dict, judge_ctx: dict, budg
                 "reason": c.reason} for c in result.changes]
     digest = gold.changes_hash(changes)
     write_json(out / "changes.json", changes)
-    (out / "review.md").write_text(review_markdown(case.name, changes, list(result.plan.gaps)))
+    safe_write.write_text(out / "review.md", review_markdown(case.name, changes, list(result.plan.gaps)))
 
     resume_text = "\n".join(original.values())
     edits = [{"before": c["original"], "after": c["proposed"]} for c in changes]
@@ -139,7 +138,7 @@ def run_one(case: Path, *, settings: Settings, base: dict, judge_ctx: dict, budg
         write_json(out / "judge_human.json", {**hv, "edits_found": len(h_edits)})
 
     if not (case / "ratings.yaml").is_file():
-        (out / "ratings.template.yaml").write_text(gold.ratings_template(changes, digest))
+        safe_write.write_text(out / "ratings.template.yaml", gold.ratings_template(changes, digest))
     cost = {"pipeline_usd": round(sink.total_cost, 6), "judge_usd": round(judge_cost, 6),
             "judge_model": judge_ctx["spec"].model}
     write_json(out / "cost.json", cost)
@@ -187,9 +186,9 @@ def cmd_calibrate(args: argparse.Namespace) -> int:
     md = gold.calibration_markdown(report, stamp)
     out = args.out or (REPORTS / f"gold_{stamp}" / "calibration.md")
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(md)
+    safe_write.write_text(out, md)
     write_json(out.with_suffix(".json"), report)
-    print(md)
+    print(safe_write.redact(md))
     print(f"Report: {out}")
     return 0
 

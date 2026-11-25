@@ -22,7 +22,6 @@ evals/results/live_summary.json, the committed record CI checks against.
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import statistics
 import sys
@@ -39,7 +38,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / "backend"), str(ROOT / "evals")]
 
-from evalkit import metrics  # noqa: E402
+from evalkit import metrics, safe_write  # noqa: E402
 from evalkit.cases import EvalCase, load_cases  # noqa: E402
 from evalkit.fingerprint import fingerprint  # noqa: E402
 
@@ -449,17 +448,17 @@ def main() -> int:
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     out = args.out or (REPORTS / stamp / "report.json")
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(report, indent=2, ensure_ascii=False))
+    safe_write.write_json(out, report, ensure_ascii=False)
     md = markdown(report)
-    out.with_suffix(".md").write_text(md)
-    print("\n" + md)
+    safe_write.write_text(out.with_suffix(".md"), md)
+    print("\n" + safe_write.redact(md))
     print(f"Report: {out}")
     if args.save_summary:
         if not args.live:
             print("--save-summary is for live runs; skipped.")
         else:
             SUMMARY.parent.mkdir(parents=True, exist_ok=True)
-            SUMMARY.write_text(json.dumps(summary_record(report), indent=2) + "\n")
+            safe_write.write_json(SUMMARY, summary_record(report))
             print(f"Saved {SUMMARY.relative_to(ROOT)}. Commit it with the prompt or model change.")
     ok = all(r["status"] == "ok" and r["passed"] for cfgr in report["configs"].values() for r in cfgr["results"])
     return 0 if ok else 1
