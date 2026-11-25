@@ -37,7 +37,7 @@ def _record(gateway: StubGateway, stage: str) -> None:
     ))
 
 
-def stub_tailor(*, document, job_text, prefs, gateway, source_docx=None, cached_structure=None,
+def stub_tailor(*, document, job_text, prefs, gateway, source_docx=None, source_pdf=None, cached_structure=None,
                 cached_job=None, iteration=1, focus_block_ids=None) -> TailoringResult:
     stage = f"it{iteration}:plan"
     _record(gateway, stage)
