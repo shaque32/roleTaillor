@@ -215,6 +215,7 @@ const server = http.createServer(async (req, res) => {
         return send(res, 201, newResume(name, "upload", blocksV1));
       }
     }
+    if (b === "text" && m === "POST") return send(res, 201, newResume(body.name || "Pasted resume", "upload", blocksV1));
     if (b === "guided" && m === "POST") {
       const bl = [B("b1", body.contact?.full_name || "Jordan Lee"), ...(body.sections || []).flatMap((s, i) => [B(`s${i}`, s.title, { h: 1 }), ...s.items.map((it, j) => B(`s${i}i${j}`, it.company || it.institution || it.name || it.text || "Item"))])];
       return send(res, 201, newResume(body.name || "New resume", "guided", bl));
@@ -310,6 +311,7 @@ const server = http.createServer(async (req, res) => {
   // billing
   if (a === "billing") {
     if (b === "status") return send(res, 200, billing);
+    if (b === "portal") return send(res, 200, { portal_url: `${ORIGIN}/v1/files/demo.pdf` });
     if (b === "checkout") return send(res, 200, { checkout_url: `${ORIGIN}/v1/files/demo.pdf` });
   }
   return err(res, 404, "not_found", `No mock for ${m} ${p}`);
