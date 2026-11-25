@@ -8,6 +8,8 @@ import sys
 from contextvars import ContextVar
 from datetime import UTC, datetime
 
+from roletailor.redaction import redact
+
 correlation_id: ContextVar[str | None] = ContextVar("correlation_id", default=None)
 
 # Attributes every LogRecord has; anything else was passed via `extra=` and is logged.
@@ -30,7 +32,8 @@ class JsonFormatter(logging.Formatter):
                 payload[key] = value
         if record.exc_info:
             payload["exc_info"] = self.formatException(record.exc_info)
-        return json.dumps(payload, default=str)
+        # Last line of defence: no credential reaches the log stream, whatever was logged.
+        return redact(json.dumps(payload, default=str))
 
 
 def configure_logging(level: str = "INFO") -> None:

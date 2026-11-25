@@ -1,0 +1,69 @@
+name: hr_business_partner_noisy_jd
+family: hr
+seniority: lead
+scenario: noisy_jd
+resume:
+  layout: classic
+  name: Odalys Pemberton
+  contact: Raleigh, NC | odalys.p@example.com | (919) 555-0136
+  summary: >-
+    Lead HR business partner with ten years supporting engineering and operations leaders through growth, reorganizations, and performance cycles.
+  experience:
+    - company: Tarragon Logistics
+      title: Lead HR Business Partner
+      dates: Jan 2021 – Present
+      bullets:
+        - Partner with 6 directors and 450 employees on workforce planning, org changes, and succession.
+        - Led a reorganization of two operations teams, keeping regretted attrition under 6%.
+        - Coached managers through 40+ employee relations cases and documented outcomes with legal.
+        - Redesigned the performance calibration process, cutting cycle time by three weeks.
+    - company: Bellwether Technologies
+      title: HR Business Partner
+      dates: Jun 2016 – Dec 2020
+      bullets:
+        - Supported 220 engineers and product staff on hiring plans, compensation reviews, and promotions.
+        - Launched a manager onboarding program that 90% of new managers completed in their first quarter.
+        - Analyzed engagement survey data and built action plans with each department head.
+    - company: Pinecrest Staffing
+      title: HR Generalist
+      dates: Aug 2013 – May 2016
+      bullets:
+        - Administered benefits, leave, and onboarding for 150 employees.
+        - Resolved payroll discrepancies and kept HR records audit ready.
+  skills:
+    - {label: "HR:", value: "employee relations, performance management, workforce planning, compensation, change management, coaching"}
+    - {label: "Systems:", value: "ADP, Excel, Power BI, Jira Service Management"}
+  education:
+    - {school: North Carolina State University, degree: B.A. Psychology, year: "2013"}
+job: |
+  Brightharbor is a global leader in connected devices, and we are proud to be a mission-driven company
+  with a vibrant culture. Founded in 2008, we serve millions of customers in over 40 countries. Our
+  values are customer obsession, bold thinking, and one team. We are growing fast and looking for
+  talented people who want to make an impact. Come build the future with us.
+
+  Benefits and perks: comprehensive medical, dental, and vision coverage; 401(k) with company match;
+  unlimited paid time off; 16 weeks of parental leave; a quarterly wellness stipend; free lunch in the
+  office; commuter benefits; learning budget; pet insurance; company-wide recharge weeks; and annual
+  offsites. Salary range for this role is $135,000 to $165,000 plus equity, depending on experience.
+
+  Brightharbor is an equal opportunity employer. We do not discriminate on the basis of race, color,
+  religion, sex, sexual orientation, gender identity, national origin, age, disability, veteran status,
+  or any other protected characteristic. Applicants with disabilities may request reasonable
+  accommodations. Please review our privacy notice before applying. We participate in E-Verify.
+
+  Senior People Partner
+  About the role: you will partner with leaders of our product and engineering organizations.
+  - Advise leaders on org design, performance management, and employee relations
+  - Run calibration and promotion cycles
+  - Use people data to guide workforce planning
+  Requirements:
+  - 7+ years of HR business partner experience in a technology company
+  - Experience with Workday and Greenhouse
+  - SHRM-SCP or similar certification preferred
+  - Familiarity with Culture Amp and Lattice
+canaries: [Workday, Greenhouse, SHRM-SCP, Culture Amp, Lattice]
+expect:
+  min_changes: 0
+  live_min_changes: 1
+  live_expected_gaps: [Workday, SHRM-SCP]
+notes: Three paragraphs of boilerplate bury a short requirements list; a good tailoring targets only the real asks (performance, workforce planning, employee relations) and ignores benefits and EEO text.

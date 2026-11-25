@@ -5,9 +5,18 @@ __pycache__/
 .ruff_cache/
 .mypy_cache/
 .data/
+# Secrets never go in git. Only the key-free .env.example templates are tracked.
 .env
+.env.*
+!.env.example
+*.pem
+*.key
 node_modules/
 .next/
 evals/reports/
 *.egg-info/
 dump.rdb
+# Gold set: real resumes are personal data. Only the README and the synthetic example are tracked.
+evals/gold/*/
+!evals/gold/_example/
+evals/gold/_example/output/

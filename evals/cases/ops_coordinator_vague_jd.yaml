@@ -1,0 +1,42 @@
+name: ops_coordinator_vague_jd
+family: operations
+seniority: mid
+scenario: vague_jd
+resume:
+  layout: classic
+  name: Naomi Fairweather
+  contact: Raleigh, NC | naomi.fairweather@example.com | (919) 555-0105
+  summary: >-
+    Operations coordinator with four years of experience keeping small teams organised through
+    scheduling, vendor coordination, and process documentation.
+  experience:
+    - company: Oakline Property Services
+      title: Operations Coordinator
+      dates: Feb 2023 – Present
+      bullets:
+        - Scheduled 25 field technicians across 180 service calls a week using shared calendars and Google Sheets.
+        - Cut missed appointments by 30% by adding reminder messages and a standard hand-off checklist.
+        - Coordinated six vendors and tracked invoices against a $320,000 annual budget.
+    - company: Birchwood Dental Group
+      title: Office Administrator
+      dates: Jul 2021 – Jan 2023
+      bullets:
+        - Managed supply ordering for three clinics and reduced stock-outs by half.
+        - Wrote step-by-step procedures for opening, closing, and equipment checks.
+        - Handled front-desk scheduling for 14 providers.
+  skills:
+    - {label: "Tools:", value: "Google Sheets, Slack, Excel, QuickBooks"}
+  education:
+    - {school: North Carolina State University, degree: B.A. Communication, year: "2021"}
+job: |
+  Operations Associate
+  We want a motivated operations person to help the team grow and keep things running smoothly.
+  You will support daily work, improve how we do things, and pitch in wherever needed.
+  Experience with Asana or similar tools is a plus, and a Lean mindset helps.
+  Great communication and a positive attitude matter most.
+canaries: [Asana, Lean]
+expect:
+  min_changes: 0
+  live_min_changes: 1
+  live_expected_gaps: [Asana]
+notes: Almost nothing concrete to target; a good tailoring makes light wording changes toward process improvement and communication without inventing Asana or Lean experience.

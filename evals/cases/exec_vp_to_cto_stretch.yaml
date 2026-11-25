@@ -1,0 +1,48 @@
+name: exec_vp_to_cto_stretch
+family: executive
+seniority: executive
+scenario: seniority_stretch
+resume:
+  layout: classic
+  name: Beatrix Oyelaran
+  contact: San Francisco, CA | beatrix.oyelaran@example.com | (415) 555-0126
+  summary: >-
+    VP of Engineering at a 60-person startup, with a track record of scaling a 22-engineer team,
+    shipping a payments platform, and keeping uptime above 99.95%.
+  experience:
+    - company: Quillfeather
+      title: VP of Engineering
+      dates: Jan 2021 – Present
+      bullets:
+        - Grew engineering from 8 to 22 engineers across four squads and set the hiring bar and leveling guide.
+        - Moved the platform to k8s, raising uptime from 99.8% to 99.96% and cutting infrastructure cost by 24%.
+        - Owned a $5.1M engineering budget and presented technical roadmaps to the founders and investors.
+        - Delivered a SOC-ready security programme with quarterly access reviews for the first enterprise customers.
+    - company: Tandem Robotics
+      title: Director of Engineering
+      dates: Apr 2016 – Dec 2020
+      bullets:
+        - Led 14 engineers building fleet-management software deployed on 1,800 robots.
+        - Reduced release cycles from six weeks to one week with automated testing.
+        - Hired and developed four engineering managers.
+  skills:
+    - {label: "Leadership:", value: "Engineering strategy, hiring, budgeting, roadmap ownership, vendor negotiation"}
+    - {label: "Technology:", value: "Python, Go, AWS, k8s, Terraform"}
+  education:
+    - {school: Carnegie Mellon University, degree: M.S. Computer Science, year: "2012"}
+job: |
+  Chief Technology Officer
+  Lead technology for a publicly traded software company with a 500+ engineer organisation.
+  Responsibilities:
+  - Own the technology strategy and Kubernetes-based platform roadmap
+  - Provide quarterly board reporting on engineering delivery, risk, and spend
+  - Ensure SOX compliance for systems that touch financial reporting
+  - Lead a global organisation of 500+ engineers through multiple layers of management
+  - Support SEC filings and investor communications as the technical voice of the company
+  - Experience as an executive at a public company
+canaries: [SOX, board reporting, SEC filings, public company]
+expect:
+  min_changes: 0
+  live_min_changes: 1
+  live_expected_gaps: [SOX, board reporting]
+notes: Scope gap between a 22-engineer startup and a 500+ engineer public company; a good tailoring aligns k8s to Kubernetes and highlights budget and investor roadmap work without inflating headcount or implying public-company experience.

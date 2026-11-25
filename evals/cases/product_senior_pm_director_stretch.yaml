@@ -1,0 +1,50 @@
+name: product_senior_pm_director_stretch
+family: product
+seniority: senior
+scenario: seniority_stretch
+resume:
+  layout: classic
+  name: Anika Sorensen
+  contact: Portland, OR | anika.s@example.org | (503) 555-0114
+  summary: >-
+    Senior product manager with nine years of experience leading payments and marketplace products
+    from discovery through launch and iteration.
+  experience:
+    - company: Cedar & Pine Marketplace
+      title: Senior Product Manager, Payments
+      dates: Apr 2020 – Present
+      bullets:
+        - Led the checkout and payouts roadmap, growing seller payout volume from $60M to $210M in three years.
+        - Ran 30+ A/B tests on checkout and cut payment failures by 24%.
+        - Defined the multi-currency launch with engineering and legal, opening four new markets.
+        - Worked day to day with two engineering squads and a design lead on a quarterly planning cadence.
+    - company: Fernhill Commerce
+      title: Product Manager
+      dates: May 2016 – Mar 2020
+      bullets:
+        - Owned the merchant onboarding flow, reducing time to first sale from 9 days to 4.
+        - Built the business case for a fraud tooling vendor that saved an estimated $1.2M a year.
+        - Partnered with analytics on SQL-based funnel dashboards.
+  skills:
+    - {label: "Product:", value: "roadmapping, discovery, A/B tests, pricing, payments, marketplaces"}
+    - {label: "Tools:", value: "SQL, Amplitude, Jira, Figma, Looker"}
+  education:
+    - {school: Oregon State University, degree: B.S. Business Administration, year: "2016"}
+job: |
+  Director of Product, Commerce Platform
+  Lead the product organization behind our commerce and payments platform.
+  Responsibilities:
+  - Set product strategy and the multi-year roadmap for a platform used by thousands of merchants
+  - Provide people management for 8+ product managers, including hiring and performance management
+  - Own org design and career frameworks for the product team
+  - Take P&L ownership for platform revenue and report to the executive team
+  Requirements:
+  - 10+ years in product management, with 4+ years managing product managers
+  - Track record of data-driven product decisions and A/B testing at scale
+  - Experience in payments or marketplaces
+canaries: [people management, hiring and performance management, org design, P&L ownership]
+expect:
+  min_changes: 0
+  live_min_changes: 1
+  live_expected_gaps: [people management, P&L ownership]
+notes: A/B tests -> A/B testing aligns and payments evidence is strong; the resume shows no managerial scope so a good tailoring must not imply managing PMs.

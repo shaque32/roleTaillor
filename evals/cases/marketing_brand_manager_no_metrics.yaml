@@ -1,0 +1,50 @@
+name: marketing_brand_manager_no_metrics
+family: marketing
+seniority: senior
+scenario: no_metrics
+resume:
+  layout: classic
+  name: Celeste Marchetti
+  contact: Nashville, TN | celeste.m@example.org | (615) 555-0192
+  summary: >-
+    Brand marketing manager with a long record of shaping brand voice, campaigns, and launches for consumer food and beverage companies.
+  experience:
+    - company: Juniper Creek Beverages
+      title: Brand Marketing Manager
+      dates: Mar 2019 – Present
+      bullets:
+        - Led the brand refresh across packaging, social channels, and retail displays with agency and internal design teams.
+        - Wrote the brand voice guide that sales, social, and customer care now use every day.
+        - Planned and launched seasonal campaigns with influencers, retail partners, and local events.
+        - Managed the creative agency relationship and kept campaign calendars on schedule.
+    - company: Oakhaven Foods
+      title: Senior Marketing Coordinator
+      dates: Jun 2014 – Feb 2019
+      bullets:
+        - Coordinated product launches with sales, packaging, and operations teams.
+        - Produced the quarterly brand newsletter and managed its editorial calendar.
+        - Organized trade show presence and follow-up with distributor contacts.
+  skills:
+    - {label: "Brand:", value: "brand strategy, brand voice, campaign planning, creative direction, agency management"}
+    - {label: "Tools:", value: "Adobe Creative Cloud, Asana, Mailchimp, Canva"}
+  education:
+    - {school: Belmont University, degree: B.A. Communications, year: "2014"}
+job: |
+  Content Marketing Lead
+  Lead our content engine and shape how customers hear about us.
+  Responsibilities:
+  - Own the editorial calendar and content strategy across blog, email, and social
+  - Manage freelance writers and the content agency
+  - Partner with product marketing on launches
+  - Measure content performance in Google Analytics and report to leadership
+  Requirements:
+  - Proven experience leading content or brand programs
+  - Excellent writing and editing
+  - Experience with HubSpot or a similar marketing automation platform
+  - SEO knowledge, including SEMrush
+canaries: [HubSpot, SEMrush, Google Analytics, SEO]
+expect:
+  min_changes: 0
+  live_min_changes: 1
+  live_expected_gaps: [HubSpot, SEMrush]
+notes: The resume contains no digits in its bullets, so any number in an edited bullet is invented; a good tailoring reframes editorial and launch work without adding metrics.

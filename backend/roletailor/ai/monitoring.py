@@ -19,7 +19,7 @@ from roletailor.ai.telemetry import CallRecord, MetricsSink
 
 log = logging.getLogger(__name__)
 
-STAGES = frozenset({"structure_resume", "analyze_job", "plan", "rewrite", "verify_claims", "feedback"})
+STAGES = frozenset({"structure_resume", "analyze_job", "plan", "summary", "rewrite", "verify_claims", "feedback"})
 _ITERATION = re.compile(r"^it\d+$")
 
 AI_CALLS = Counter(

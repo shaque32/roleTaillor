@@ -1,4 +1,7 @@
 name: frontend_poor_match
+family: software
+seniority: senior
+scenario: poor_match
 resume: classic
 page_limit: 2
 job: |

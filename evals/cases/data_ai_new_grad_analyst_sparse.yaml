@@ -1,0 +1,49 @@
+name: data_ai_new_grad_analyst_sparse
+family: data_ai
+seniority: junior
+scenario: sparse_resume
+resume:
+  layout: classic
+  name: Kenji Watanabe
+  contact: Seattle, WA | kenji.w@example.com | (206) 555-0166
+  summary: >-
+    Recent statistics graduate with a data analytics internship and a capstone forecasting project,
+    comfortable with SQL, Python, and Power BI.
+  experience:
+    - company: Cascadia Outfitters
+      title: Data Analyst Intern
+      dates: Jun 2025 – Aug 2025
+      bullets:
+        - Cleaned and joined sales and inventory tables in SQL for a weekly stock report used by store managers.
+        - Built a Power BI dashboard of regional sales trends that the merchandising team reviewed in Monday meetings.
+        - Documented the report logic so the next intern could maintain it.
+    - company: Capstone Project, University of Washington
+      title: Demand Forecasting for a Bike Share Program
+      dates: Jan 2025 – Jun 2025
+      bullets:
+        - Forecast daily ride demand with Python, Pandas, and a seasonal time series model across two years of public trip data.
+        - Presented findings and error analysis to a panel of faculty and two industry reviewers.
+  skills:
+    - {label: "Tools:", value: "SQL, Python, Pandas, Power BI, Excel, Git"}
+    - {label: "Methods:", value: "statistics, time series, data cleaning, visualization"}
+  education:
+    - {school: University of Washington, degree: B.S. Statistics, year: "2025"}
+job: |
+  Data Analyst, Entry Level
+  Help our operations team turn data into decisions.
+  Responsibilities:
+  - Build and maintain dashboards in Tableau
+  - Write SQL against our Snowflake warehouse
+  - Automate recurring reports with Python
+  - Present findings to non-technical stakeholders
+  Requirements:
+  - Bachelor's degree in a quantitative field
+  - Proficiency in SQL and Python
+  - Experience with Tableau or a similar BI tool
+  - Exposure to Alteryx and Looker is a plus
+canaries: [Tableau, Snowflake, Alteryx, Looker]
+expect:
+  min_changes: 0
+  live_min_changes: 1
+  live_expected_gaps: [Tableau, Snowflake]
+notes: A thin resume with a capstone listed as a role; a good tailoring foregrounds SQL, Python, and dashboarding (Power BI as a similar BI tool) without claiming Tableau or Snowflake.

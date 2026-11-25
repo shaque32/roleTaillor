@@ -3,7 +3,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import model_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -126,6 +126,13 @@ class Settings(BaseSettings):
         if problems:
             raise ValueError("unsafe configuration outside dev/test: " + "; ".join(problems))
         return self
+
+    @field_validator("models_config_path", "storage_local_dir")
+    @classmethod
+    def _anchor_to_repo(cls, v: Path) -> Path:
+        # .env uses repo-relative paths (config/models.yaml); the API, worker, tests, and
+        # evals start from different directories, so never resolve against the cwd.
+        return v if v.is_absolute() else REPO_ROOT / v
 
 
 @lru_cache
