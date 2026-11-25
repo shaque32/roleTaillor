@@ -45,7 +45,10 @@ packages = ["roletailor"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["db: needs a PostgreSQL database (RT_TEST_DATABASE_URL)"]
+markers = [
+    "db: needs a PostgreSQL database (RT_TEST_DATABASE_URL)",
+    "live: hits real third-party APIs (off unless RT_LIVE_JOB_BOARDS=1)",
+]
 
 [tool.ruff]
 line-length = 120
