@@ -15,13 +15,14 @@ import gate  # noqa: E402
 from evalkit import metrics  # noqa: E402
 from evalkit.cases import load_cases  # noqa: E402
 from evalkit.fingerprint import fingerprint  # noqa: E402
+from validate_cases import problems  # noqa: E402
+
 from roletailor.ai.cache import MemoryCache  # noqa: E402
 from roletailor.ai.gateway import build_gateway  # noqa: E402
 from roletailor.ai.telemetry import MemorySink  # noqa: E402
 from roletailor.config import Settings  # noqa: E402
 from roletailor.documents import read_docx  # noqa: E402
 from roletailor.pipeline.orchestrator import TailoringPrefs, tailor  # noqa: E402
-from validate_cases import problems  # noqa: E402
 
 
 @pytest.fixture(scope="module")
