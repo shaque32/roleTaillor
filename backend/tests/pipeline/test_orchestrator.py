@@ -8,11 +8,12 @@ import pytest
 
 from roletailor.ai.cache import MemoryCache
 from roletailor.ai.gateway import AIUnavailable, build_gateway
+from roletailor.ai.providers.base import ProviderError
 from roletailor.ai.providers.fake import FakeProvider
 from roletailor.ai.telemetry import MemorySink
 from roletailor.config import Settings
 from roletailor.documents import read_docx
-from roletailor.domain.models import BlockPlan, BlockRewrite, RewriteBatch, TailoringPlan
+from roletailor.domain.models import BlockPlan, BlockRewrite, RewriteBatch, SummaryDraft, TailoringPlan
 from roletailor.pipeline.orchestrator import TailoringPrefs, tailor
 from tests.fixtures.make_fixtures import make_classic_resume
 
@@ -183,31 +184,50 @@ def test_default_config_retries_once_without_escalating(doc):
     assert [m for m, k in prov.calls if k == "rewrite"] == ["claude-haiku-5-5", "claude-haiku-5-5"]
 
 
-class SummaryPlanner(FakeProvider):
-    """Plans only the summary and writes it itself."""
+class SummaryWriter(FakeProvider):
+    """Plans only the summary; the summary stage writes it."""
 
     text = ("Machine learning and data engineer with 8 years of experience taking models from "
             "notebook to production and building reliable batch and streaming pipelines.")
+    fail = False
 
     def _plan(self, p):
         bid = next(b["id"] for s in p["resume"]["sections"] if s["kind"] == "summary"
                    for b in s["blocks"] if b["editable"])
-        return TailoringPlan(summary_text=self.text, confidence=0.9,
+        return TailoringPlan(confidence=0.9,
                              block_plans=[BlockPlan(block_id=bid, target_keywords=["machine learning"])])
 
+    def _summary(self, p):
+        self.payload = p
+        if self.fail:
+            raise ProviderError("simulated outage", code="http_503")
+        return SummaryDraft(new_text=self.text, terms_used=["machine learning"])
 
-def test_planner_summary_is_used_without_a_rewrite_call(doc):
-    prov = SummaryPlanner()
+
+def test_summary_goes_to_its_own_stage_on_the_mid_tier(doc):
+    prov = SummaryWriter()
     result, _ = run(doc, prov)
-    assert [c.proposed_text for c in result.changes] == [SummaryPlanner.text]
+    assert [c.proposed_text for c in result.changes] == [SummaryWriter.text]
+    assert [(c.scope, c.source_stage) for c in result.changes] == [("summary", "summary")]
+    assert [m for m, k in prov.calls if k == "summary"] == ["claude-sonnet-5-5"]
     assert not any(k == "rewrite" for _, k in prov.calls)
     assert any(k == "verify_claims" for _, k in prov.calls)  # still fact-checked
+    # The writer is only offered job terms the resume backs, each with the backing text.
+    assert prov.payload["candidates"] and all(c["resume_quote"] for c in prov.payload["candidates"])
 
 
-def test_rejected_planner_summary_falls_back_to_the_writer(doc):
-    prov = SummaryPlanner()
-    prov.text = SummaryPlanner.text.replace("8 years", "12 years")  # invented number
+def test_rejected_summary_is_retried_with_the_reason_then_dropped(doc):
+    prov = SummaryWriter()
+    prov.text = SummaryWriter.text.replace("8 years", "12 years")  # invented number
     result, _ = run(doc, prov)
     assert result.edits == {}
-    assert sum(k == "rewrite" for _, k in prov.calls) == 1  # retry round went to the writer
+    assert sum(k == "summary" for _, k in prov.calls) == 2
+    assert "12" in str(prov.payload["feedback"])
     assert {v.rule_key: v for v in result.validations}["facts.numbers"].details["violations"]
+
+
+def test_summary_falls_back_to_the_bullet_writer_when_its_stage_is_down(doc):
+    prov = SummaryWriter()
+    prov.fail = True
+    run(doc, prov)
+    assert any(k == "rewrite" for _, k in prov.calls)

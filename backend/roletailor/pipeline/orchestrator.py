@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 
 from pydantic import BaseModel
 
@@ -89,7 +90,7 @@ def tailor(
                        prefs=pref_dict, focus=focus_block_ids, label=f"{it}:plan")
 
     doc_ctx = DocContext(facts=structure.facts, job=job)
-    accepted, log_by_rule, dropped = _rewrite_and_validate(
+    accepted, log_by_rule, dropped, source = _rewrite_and_validate(
         gateway, document=document, plan=plan, scopes=scopes, job=job, doc_ctx=doc_ctx,
         prefs=pref_dict, it=it, focus=set(focus_block_ids or []))
 
@@ -123,7 +124,8 @@ def tailor(
     by_id = {b.id: b for b in document.blocks}
     changes = [
         Change(block_path=bid, prior_text=by_id[bid].text, proposed_text=r.new_text, reason=r.reason,
-               prioritized_keywords=[k for k in r.keywords_used if contains_any(r.new_text, [k])])
+               prioritized_keywords=[k for k in r.keywords_used if contains_any(r.new_text, [k])],
+               scope=scopes.get(bid), source_stage=source.get(bid))
         for bid, r in accepted.items()
     ]
     return TailoringResult(
@@ -143,27 +145,62 @@ def _rewrite_and_validate(gateway: Gateway, *, document: ParsedDocument, plan, s
     log_by_rule: dict[str, list[Violation]] = defaultdict(list)
     verifier_down = False
     no_gain: dict[str, str] = {}
+    source: dict[str, str] = {}  # which stage wrote each accepted edit
     context = {"job_title": job.title, "positioning": plan.positioning,
                "tone": prefs.get("tone"), "technical_depth": prefs.get("technical_depth")}
     router = gateway.router
+    keywords = {b: bp.target_keywords for b, bp in plans.items()}
+    backed = {b: [te.model_dump() for te in bp.term_evidence] for b, bp in plans.items()}
+    # The summary has its own stage. It may name any job term the resume has earned, so
+    # its gates are given that list in place of the planner's three keywords.
+    sid = _summary_target(plans, scopes) if "summary" in router.stages else None
+    if sid:
+        cands = stages.summary_candidates(job, plan, document.text_blocks())
+        keywords[sid] = [c["term"] for c in cands]
+        backed[sid] = [{"job_term": c["term"], "resume_quote": c["resume_quote"]} for c in cands]
+        whole = stages.resume_text(document.blocks)[:12000]
+
+    def item(bid: str) -> dict:
+        bp, orig = plans[bid], by_id[bid].text
+        lo, hi = scope_length_bounds(len(clean(orig)), scopes[bid], doc_ctx.length_tolerance)
+        return {"block_id": bid, "text": orig, "target_keywords": bp.target_keywords,
+                "evidence": bp.evidence, "instruction": bp.instruction,
+                "term_evidence": [te.model_dump() for te in bp.term_evidence],
+                "min_chars": max(lo, 1), "max_chars": hi}
+
+    def write(items: list[dict], rnd: int, feedback: dict) -> dict[str, BlockRewrite]:
+        if not items:
+            return {}
+        return stages.rewrite(gateway, items=items, context=context, feedback=feedback,
+                              label=f"{it}:rewrite:r{rnd}", batch_size=router.rewrite_batch_size,
+                              concurrency=router.rewrite_concurrency, escalate=1 if rnd == 2 else 0)
+
+    def draft_summary(rnd: int, reasons: list[str]) -> BlockRewrite | None:
+        i = item(sid)
+        try:
+            d = stages.write_summary(
+                gateway, original=i["text"], candidates=cands, context=context, resume=whole,
+                min_chars=i["min_chars"], max_chars=i["max_chars"],
+                feedback=reasons, label=f"{it}:summary:r{rnd}")
+        except AIUnavailable as e:
+            log.warning("summary stage failed, using the bullet writer: %s", e)
+            return None
+        return BlockRewrite(block_id=sid, new_text=d.new_text, keywords_used=keywords[sid],
+                            reason=d.reason or "Summary now leads with what this job asks for.")
 
     for rnd in range(min(MAX_ROUNDS, router.rewrite_max_rounds)):
         if not pending:
             break
-        items = []
-        drafted = _planner_summary(plan, plans, scopes, by_id) if rnd == 0 else {}
-        for bid in sorted(pending - set(drafted), key=lambda x: list(plans).index(x)):
-            bp, orig = plans[bid], by_id[bid].text
-            lo, hi = scope_length_bounds(len(clean(orig)), scopes[bid], doc_ctx.length_tolerance)
-            items.append({"block_id": bid, "text": orig, "target_keywords": bp.target_keywords,
-                          "evidence": bp.evidence, "instruction": bp.instruction,
-                          "term_evidence": [te.model_dump() for te in bp.term_evidence],
-                          "min_chars": max(lo, 1), "max_chars": hi})
-        out = stages.rewrite(gateway, items=items, context=context, feedback=feedback,
-                             label=f"{it}:rewrite:r{rnd}", batch_size=router.rewrite_batch_size,
-                             concurrency=router.rewrite_concurrency, escalate=1 if rnd == 2 else 0) \
-            if items else {}
-        out.update(drafted)
+        order = sorted(pending, key=lambda x: list(plans).index(x))
+        with ThreadPoolExecutor(max_workers=1) as pool:  # summary runs beside the bullets
+            fut = pool.submit(draft_summary, rnd, feedback.get(sid, [])) if sid in pending else None
+            out = write([item(b) for b in order if not (fut and b == sid)], rnd, feedback)
+            summary = fut.result() if fut else None
+        if summary:
+            out[sid] = summary
+        elif fut:
+            out.update(write([item(sid)], rnd, feedback))
+        by_summary_stage = {sid} if summary else set()
 
         failures: dict[str, list[Violation]] = {}
         candidates: dict[str, BlockRewrite] = {}
@@ -179,8 +216,8 @@ def _rewrite_and_validate(gateway: Gateway, *, document: ParsedDocument, plan, s
                 no_gain[bid] = r.new_text
                 continue  # cosmetic edit: keep the original, do not spend a verify call
             ctx = BlockContext(block_id=bid, original=by_id[bid].text, scope=scopes[bid],
-                               target_keywords=plans[bid].target_keywords,
-                               supported_terms=[te.job_term for te in plans[bid].term_evidence])
+                               target_keywords=keywords[bid],
+                               supported_terms=[te["job_term"] for te in backed[bid]])
             v = check_block(ctx, r.new_text, doc_ctx)
             if v:
                 failures[bid] = v
@@ -189,8 +226,9 @@ def _rewrite_and_validate(gateway: Gateway, *, document: ParsedDocument, plan, s
 
         if candidates:
             pairs = [{"block_id": b, "original": by_id[b].text, "rewritten": r.new_text,
-                      "claimed_equivalences": [te.model_dump() for te in plans[b].term_evidence
-                                               if contains_any(r.new_text, [te.job_term])]}
+                      "claimed_equivalences": [te for te in backed[b]
+                                               if contains_any(r.new_text, [te["job_term"]])
+                                               and not contains_any(by_id[b].text, [te["job_term"]])]}
                      for b, r in candidates.items()]
             try:
                 check = stages.verify_claims(gateway, pairs=pairs, facts=doc_ctx.facts,
@@ -202,6 +240,7 @@ def _rewrite_and_validate(gateway: Gateway, *, document: ParsedDocument, plan, s
                 v = verdicts.get(b)
                 if v is not None and v.supported:
                     accepted[b] = r
+                    source[b] = "summary" if b in by_summary_stage else "rewrite"
                 else:
                     why = (f"unsupported claims: {v.unsupported_claims}" if v
                            else "claim verifier unavailable" if verifier_down else "not verified")
@@ -222,22 +261,14 @@ def _rewrite_and_validate(gateway: Gateway, *, document: ParsedDocument, plan, s
             log_by_rule["value.no_gain"].append(Violation(
                 rule_key="value.no_gain", block_id=bid, severity="warn",
                 detail=f"kept original; proposed edit added nothing for this job: {proposed[:300]}"))
-    return accepted, log_by_rule, sorted(pending)
+    return accepted, log_by_rule, sorted(pending), source
 
 
-def _planner_summary(plan, plans: dict, scopes: dict[str, str], by_id: dict) -> dict[str, BlockRewrite]:
-    """Use the planner's summary draft as the first attempt for the summary block. If a
-    gate rejects it, the block falls back to the writer on the retry round, with the
-    reasons. Only when exactly one summary block is planned, so the draft's target is
-    unambiguous."""
+def _summary_target(plans: dict, scopes: dict[str, str]) -> str | None:
+    """The planned summary block, when there is exactly one, so the summary stage's
+    output has an unambiguous home. Otherwise summaries go to the bullet writer."""
     targets = [b for b in plans if scopes.get(b) == "summary"]
-    text = clean(plan.summary_text)
-    if len(targets) != 1 or not text:
-        return {}
-    bid = targets[0]
-    return {bid: BlockRewrite(block_id=bid, new_text=stages.match_ending(by_id[bid].text, text),
-                              reason="Summary rewritten to lead with the strengths this job asks for.",
-                              keywords_used=plans[bid].target_keywords)}
+    return targets[0] if len(targets) == 1 else None
 
 
 def _enforce_page_limit(source_docx: bytes, edits: dict[str, str], document: ParsedDocument,

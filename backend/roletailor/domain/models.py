@@ -115,9 +115,6 @@ class BlockPlan(BaseModel):
 
 class TailoringPlan(BaseModel):
     positioning: str = ""
-    # The planner's own rewrite of the summary. It sees the whole resume and the job, so
-    # it writes this one block itself; the text goes through the same gates as any edit.
-    summary_text: str = ""
     block_plans: list[BlockPlan] = Field(default_factory=list)
     # JD keywords with no evidence in the resume. Surfaced to the user, never inserted.
     gaps: list[str] = Field(default_factory=list)
@@ -129,6 +126,13 @@ class BlockRewrite(BaseModel):
     new_text: str
     reason: str = ""
     keywords_used: list[str] = Field(default_factory=list)
+
+
+class SummaryDraft(BaseModel):
+    """Output of the summary stage: the new summary and the job terms it names."""
+    new_text: str
+    terms_used: list[str] = Field(default_factory=list)
+    reason: str = ""
 
 
 class RewriteBatch(BaseModel):
@@ -191,6 +195,9 @@ class Change(BaseModel):
     proposed_text: str
     reason: str
     prioritized_keywords: list[str] = Field(default_factory=list)
+    # For acceptance analysis: the kind of block, and which stage wrote the edit.
+    scope: Literal["summary", "bullet", "skills"] | None = None
+    source_stage: Literal["summary", "rewrite"] | None = None
 
 
 class TailoringResult(BaseModel):

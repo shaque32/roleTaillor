@@ -18,6 +18,7 @@ from roletailor.domain.models import (
     JobAnalysis,
     ResumeStructure,
     RewriteBatch,
+    SummaryDraft,
     TailoringPlan,
 )
 from roletailor.pipeline import heuristics
@@ -218,6 +219,41 @@ def rewrite(gw: Gateway, *, items: list[dict], context: dict, feedback: dict[str
     out = {r.block_id: r for rs in results for r in rs if r.block_id in originals}
     for bid, r in out.items():
         r.new_text = match_ending(originals[bid], r.new_text)
+    return out
+
+
+def summary_candidates(job: JobAnalysis, plan: TailoringPlan, blocks: list[Block]) -> list[dict]:
+    """Job terms the summary may name, must-haves first, each with the resume words that
+    back it. `stated`: the resume uses the term or a listed synonym. `shown`: the planner
+    paired the term with a resume quote that code found verbatim (_valid_term_evidence).
+    Nothing else is offered, so the summary writer chooses among earned terms."""
+    evidence = heuristics.keyword_evidence(job, blocks)
+    text = {b.id: clean(b.text) for b in blocks}
+    shown = {te.job_term: te.resume_quote for bp in plan.block_plans for te in bp.term_evidence}
+    rank = {"must": 0, "should": 1, "nice": 2}
+    out = []
+    for k in sorted(job.keywords, key=lambda k: rank[k.importance]):
+        if evidence.get(k.term):
+            out.append({"term": k.term, "importance": k.importance, "support": "stated",
+                        "mentions": len(evidence[k.term]),
+                        "resume_quote": text[evidence[k.term][0]][:240]})
+        elif k.term in shown:
+            out.append({"term": k.term, "importance": k.importance, "support": "shown",
+                        "mentions": 1, "resume_quote": shown[k.term]})
+    return out[:12]
+
+
+def write_summary(gw: Gateway, *, original: str, candidates: list[dict], context: dict,
+                  resume: str, min_chars: int, max_chars: int, feedback: list[str],
+                  label: str) -> SummaryDraft:
+    """The summary is the block a recruiter reads first, so it gets its own call on a
+    stronger model than the bullet writer. Raises AIUnavailable; the caller falls back."""
+    payload = {**context, "summary": original, "min_chars": min_chars, "max_chars": max_chars,
+               "candidates": candidates, "resume": resume,
+               **({"feedback": feedback} if feedback else {})}
+    out = gw.run(stage="summary", label=label, prompt_key="summary", payload=payload,
+                 output=SummaryDraft)
+    out.new_text = match_ending(original, out.new_text)
     return out
 
 

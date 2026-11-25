@@ -85,3 +85,21 @@ When a change is meant to alter offline results, review the diff of
 
 Copy a case close to what you want, change it, then run `make eval-validate` and
 `make eval-baseline`. Keep canaries concrete (named tools, licences, certifications).
+
+## Gold set and judge calibration
+
+The 35 synthetic cases cannot tell us whether the LLM judge agrees with people; its
+"relevance" score in particular is strict. `evals/gold/` holds real resume and job pairs
+(git-ignored, local only) with optional human-tailored versions and human ratings:
+
+```bash
+make eval-gold             # tailor and judge each gold case, writes evals/gold/<case>/output/
+# read output/review.md, copy output/ratings.template.yaml to ratings.yaml, fill it in
+make eval-gold-calibrate   # offline: judge vs human, report in evals/reports/gold_<time>/
+```
+
+The calibration report gives, per dimension, n, human and judge means, bias (judge minus
+human), mean absolute difference, share within one point, and Spearman correlation. A
+dimension is "calibrated" when |bias| <= 0.5 and mean absolute difference <= 1.0, else
+"directional only". Below 10 rated cases the report says nothing can be concluded. See
+`gold/README.md` for the layout and privacy rules; logic lives in `evalkit/gold.py`.

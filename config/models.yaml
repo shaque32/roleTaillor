@@ -50,6 +50,10 @@ stages:
   structure_resume: {tier: low, max_tokens: 8000, max_tier: medium}
   analyze_job:      {tier: low, max_tokens: 4000, max_tier: medium}
   plan:             {tier: medium, max_tokens: 8000, max_tier: high}
+  # The summary is the block a recruiter reads first. It gets its own call on the mid
+  # tier (about $0.007 a run); bullets stay on the low tier. Remove this stage and the
+  # summary goes back to the bullet writer.
+  summary:          {tier: medium, max_tokens: 1500, max_tier: medium}
   rewrite:          {tier: low, max_tokens: 6000, max_tier: medium}
   verify_claims:    {tier: low, max_tokens: 4000, max_tier: medium}
   feedback:         {tier: low, max_tokens: 3000, max_tier: medium}

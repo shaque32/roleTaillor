@@ -2,7 +2,7 @@
 PY := backend/.venv/bin/python
 EVAL := cd backend && .venv/bin/python ../evals
 
-.PHONY: setup test eval eval-validate eval-gate eval-baseline eval-live eval-live-quick eval-live-tune
+.PHONY: setup test eval eval-validate eval-gate eval-baseline eval-live eval-live-quick eval-live-tune eval-gold eval-gold-calibrate
 
 setup:
 	cd backend && (command -v uv >/dev/null && uv venv .venv && uv pip install -p .venv -e ".[dev]" \
@@ -44,3 +44,13 @@ eval-live-tune:
 	    data_ai_cdao_executive_partial mech_eng_hardware_partial ops_supplychain_metric_heavy \
 	    software_intern_sparse software_mobile_injection healthcare_data_coordinator_no_rn \
 	    marketing_brand_manager_no_metrics civil_to_datasci_poor_match sales_account_executive_metric_heavy,--case $(c))
+
+# Gold set: real resume and job pairs in evals/gold/<case>/ (never committed). Runs the
+# pipeline and the judge on each, writing output/ next to the inputs. See evals/gold/README.md.
+GOLD_MAX_USD ?= 2
+eval-gold:
+	$(EVAL)/run_gold.py run --yes --max-usd $(GOLD_MAX_USD)
+
+# Offline: compare the judge's scores with the human ratings you filled in.
+eval-gold-calibrate:
+	$(EVAL)/run_gold.py calibrate

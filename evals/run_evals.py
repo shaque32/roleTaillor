@@ -102,6 +102,14 @@ def describe(cfg: dict) -> dict[str, str]:
     return {s: cfg["models"][cfg["tiers"][p["tier"]][0]]["model"] for s, p in cfg["stages"].items()}
 
 
+def build_judge_ctx(base: dict, judge_model: str) -> dict:
+    """Provider and model spec for the LLM judge. Needs ANTHROPIC_API_KEY in the environment."""
+    from roletailor.ai.providers.anthropic_provider import AnthropicProvider
+
+    spec = ModelRouter(base).models[judge_model]
+    return {"provider": AnthropicProvider(api_key=os.environ["ANTHROPIC_API_KEY"]), "spec": spec}
+
+
 # --------------------------------------------------------------------------- one case
 
 
@@ -409,10 +417,7 @@ def main() -> int:
     budget = Budget(args.max_usd if args.live else float("inf"))
     judge_ctx = None
     if args.judge:
-        from roletailor.ai.providers.anthropic_provider import AnthropicProvider
-
-        spec = ModelRouter(base).models[args.judge_model]
-        judge_ctx = {"provider": AnthropicProvider(api_key=os.environ["ANTHROPIC_API_KEY"]), "spec": spec}
+        judge_ctx = build_judge_ctx(base, args.judge_model)
 
     workers = args.concurrency or (4 if args.live else 1)
     report = {"created_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),

@@ -9,10 +9,11 @@ from urllib.parse import urlsplit, urlunsplit
 import psycopg
 import pytest
 
+from roletailor.pipeline.validation.rules import RULE_VERSION
 from tests.platform.conftest import create_job, upload_resume
 from tests.platform.test_workflows import start
 
-STAGES = {"structure_resume", "analyze_job", "plan", "rewrite", "verify_claims", "feedback", "other"}
+STAGES = {"structure_resume", "analyze_job", "plan", "summary", "rewrite", "verify_claims", "feedback", "other"}
 ROUTES = {"primary", "failover", "escalated", "cache"}
 FABRICATION = {"facts.numbers", "facts.terms", "facts.keywords", "facts.claims"}
 
@@ -77,7 +78,7 @@ def test_views_return_sane_rows(metrics, generated):
     assert all(d[5] is None or d[5] >= 0 for d in daily)
 
     rules = q("SELECT rule_key, planned_blocks, flagged_blocks, reverted_blocks, flagged_rate "
-              "FROM roletailor_ops.validation_daily").fetchall()
+              "FROM roletailor_ops.validation_daily WHERE rule_version = %s", (RULE_VERSION,)).fetchall()
     assert {r[0] for r in rules} >= FABRICATION
     assert all(r[1] > 0 and r[2] >= 0 and r[3] >= 0 for r in rules)
     assert all(r[4] is None or 0 <= r[4] <= 1 for r in rules)
@@ -90,6 +91,44 @@ def test_views_return_sane_rows(metrics, generated):
     assert rel
     for stage, n, fail, fallback, avg in rel:
         assert stage in STAGES and n > 0 and 0 <= fail <= 1 and 0 <= fallback <= 1 and avg >= 0
+
+
+def test_change_acceptance_follows_review_decisions(metrics, make_user, classic_docx):
+    def reviewed(decision: str | None):
+        user = make_user()
+        wid = start(user, upload_resume(user, classic_docx)["version"]["id"], create_job(user)["id"]).json()["id"]
+        detail = user.get(f"/v1/workflows/{wid}").json()
+        gid, changes = detail["latest"]["id"], detail["changes"]
+        assert changes
+        if decision:
+            r = user.patch(f"/v1/generated/{gid}/changes/{changes[0]['id']}", json={"decision": decision})
+            assert r.status_code == 200, r.text
+        return wid, len(changes), user, gid
+
+    def outcomes(wid: str) -> list[str]:
+        rows = metrics.execute(
+            "SELECT scope, source_stage, outcome, prompt_key, prompt_version, model"
+            " FROM roletailor_ops.change_decisions WHERE workflow_id = %s", (wid,)).fetchall()
+        assert all(scope in {"summary", "bullet", "skills"} and stage in {"summary", "rewrite"}
+                   and key == stage and version and model for scope, stage, _o, key, version, model in rows)
+        return sorted(r[2] for r in rows)
+
+    wid_a, n_a, _, _ = reviewed("accepted")
+    wid_r, n_r, _, _ = reviewed("rejected")
+    assert outcomes(wid_a) == ["accepted"] + ["unreviewed"] * (n_a - 1)
+    assert outcomes(wid_r) == ["rejected"] + ["unreviewed"] * (n_r - 1)
+
+    proposed, accepted, rejected = metrics.execute(
+        "SELECT sum(proposed), sum(accepted), sum(rejected) FROM roletailor_ops.change_acceptance_daily").fetchone()
+    assert proposed >= n_a + n_r and accepted >= 1 and rejected >= 1
+    rates = metrics.execute("SELECT acceptance_rate, kept_rate FROM roletailor_ops.change_acceptance_daily").fetchall()
+    assert all(r is None or 0 <= r <= 1 for row in rates for r in row)
+
+    # Approving a resume turns the changes left pending into kept_by_default.
+    wid_p, n_p, user_p, gid_p = reviewed(None)
+    assert outcomes(wid_p) == ["unreviewed"] * n_p
+    assert user_p.post(f"/v1/generated/{gid_p}/approve").status_code == 200
+    assert outcomes(wid_p) == ["kept_by_default"] * n_p
 
 
 def test_privilege_boundaries(metrics, database, generated):
