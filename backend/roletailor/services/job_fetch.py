@@ -162,7 +162,7 @@ def _fetch_from_board(
         job = request.parse(json.loads(body))
     except httpx.HTTPError as exc:
         raise JobFetchError(str(exc)) from exc
-    except (ValueError, job_boards.BoardParseError) as exc:
+    except (ValueError, RecursionError, job_boards.BoardParseError) as exc:  # RecursionError: absurdly nested JSON
         raise JobFetchError(f"unreadable {request.board} API response: {exc}") from exc
     if len(job.text) < MIN_TEXT_CHARS:
         raise JobFetchError(f"{request.board} API returned no job description")

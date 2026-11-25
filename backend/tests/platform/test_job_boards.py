@@ -172,6 +172,7 @@ GENERIC_PAGE = httpx.Response(
     httpx.Response(200, text="not json", headers={"content-type": "application/json"}),
     httpx.Response(200, json=["unexpected"]),
     httpx.Response(200, json={"title": "Odd", "content": 42}),
+    httpx.Response(200, content=b"[" * 50_000, headers={"content-type": "application/json"}),  # too deeply nested
     httpx.Response(200, json={"title": "Empty", "content": "&lt;p&gt;Too short&lt;/p&gt;"}),
     httpx.Response(200, json={"content": "x" * 200_000}),  # over the size cap
 ])
