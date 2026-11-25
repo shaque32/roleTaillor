@@ -2,9 +2,10 @@
 
 SSRF guards: only http/https, every hop's host must resolve exclusively to public
 addresses, redirects are followed manually (and re-checked), proxies from the
-environment are ignored, responses are size-capped and time-limited. Residual risk:
-DNS rebinding between our check and httpx's own resolution; deployments should also
-route egress through a proxy that denies private ranges.
+environment are ignored, responses are size-capped and time-limited (per read and in
+total), and only ports 80 and 443 are allowed. Each connection is made to the exact
+address that was checked, so a host cannot pass the check with a public address and
+then answer the real lookup with a private one (DNS rebinding).
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ import ipaddress
 import json
 import re
 import socket
+import time
 from dataclasses import dataclass
 from urllib.parse import urljoin, urlsplit
 
@@ -39,11 +41,23 @@ def _resolve(host: str, port: int) -> list[str]:
     return [info[4][0] for info in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)]
 
 
-def _check_url(url: str) -> None:
+ALLOWED_PORTS = frozenset({80, 443})
+
+
+def _check_url(url: str) -> tuple[str, str, int, str]:
+    """Validate one hop. Returns (scheme, host, port, address), where `address` is the
+    vetted public IP the connection must be made to."""
     parts = urlsplit(url)
     if parts.scheme not in ("http", "https") or not parts.hostname:
         raise JobFetchError("only http and https URLs are supported")
-    port = parts.port or (443 if parts.scheme == "https" else 80)
+    if parts.username is not None or parts.password is not None:
+        raise JobFetchError("URLs with credentials are not supported")
+    try:
+        port = parts.port or (443 if parts.scheme == "https" else 80)
+    except ValueError as exc:
+        raise JobFetchError("invalid port") from exc
+    if port not in ALLOWED_PORTS:
+        raise JobFetchError("only ports 80 and 443 are supported")
     try:
         addresses = _resolve(parts.hostname, port)
     except (socket.gaierror, UnicodeError) as exc:
@@ -52,19 +66,45 @@ def _check_url(url: str) -> None:
         raise JobFetchError("host does not resolve")
     for address in addresses:
         ip = ipaddress.ip_address(address.split("%", 1)[0])
+        mapped = getattr(ip, "ipv4_mapped", None)
+        if mapped is not None:
+            ip = mapped
         if not ip.is_global or ip.is_multicast:
             raise JobFetchError("host resolves to a non-public address")
+    return parts.scheme, parts.hostname, port, addresses[0].split("%", 1)[0]
 
 
-def _download(url: str, *, timeout: float, max_bytes: int, transport: httpx.BaseTransport | None):
+def _pinned_request(client: httpx.Client, url: str) -> httpx.Request:
+    """Build a GET that connects to the address `_check_url` vetted instead of letting
+    the HTTP client resolve the name again. A second lookup is the DNS rebinding window:
+    the name can answer with a public address for the check and a private one for the
+    connection. TLS still verifies the certificate against the original host name."""
+    scheme, host, port, address = _check_url(url)
+    parts = urlsplit(url)
+    literal = f"[{address}]" if ":" in address else address
+    default_port = 443 if scheme == "https" else 80
+    netloc = literal if port == default_port else f"{literal}:{port}"
+    target = parts._replace(netloc=netloc, fragment="").geturl()
+    host_header = host if port == default_port else f"{host}:{port}"
+    extensions = {"sni_hostname": host} if scheme == "https" else {}
+    return client.build_request("GET", target, headers={"Host": host_header}, extensions=extensions)
+
+
+def _download(url: str, *, timeout: float, max_bytes: int, transport: httpx.BaseTransport | None,
+              total_seconds: float | None = None):
     headers = {"User-Agent": "RoleTailorBot/1.0 (+job description fetch)", "Accept": "text/html"}
+    # `timeout` bounds each connect and read; the deadline bounds the whole fetch, so a
+    # server that drips bytes cannot hold a request thread open.
+    deadline = time.monotonic() + (total_seconds if total_seconds is not None else timeout * 2.5)
     with httpx.Client(
         timeout=timeout, follow_redirects=False, trust_env=False, transport=transport,
         headers=headers,
     ) as client:
         for _ in range(MAX_REDIRECTS + 1):
-            _check_url(url)
-            with client.stream("GET", url) as response:
+            if time.monotonic() > deadline:
+                raise JobFetchError("the page took too long to respond")
+            response = client.send(_pinned_request(client, url), stream=True)
+            try:
                 if response.is_redirect and "location" in response.headers:
                     url = urljoin(url, response.headers["location"])
                     continue
@@ -72,13 +112,17 @@ def _download(url: str, *, timeout: float, max_bytes: int, transport: httpx.Base
                     raise JobFetchError(f"status {response.status_code}")
                 content_type = response.headers.get("content-type", "")
                 if "html" not in content_type and "text/plain" not in content_type:
-                    raise JobFetchError(f"unsupported content type {content_type!r}")
+                    raise JobFetchError("unsupported content type")
                 body = bytearray()
                 for chunk in response.iter_bytes():
                     body.extend(chunk)
                     if len(body) > max_bytes:
                         raise JobFetchError("response too large")
+                    if time.monotonic() > deadline:
+                        raise JobFetchError("the page took too long to respond")
                 return bytes(body), response.encoding or "utf-8"
+            finally:
+                response.close()
     raise JobFetchError("too many redirects")
 
 
@@ -137,10 +181,13 @@ def extract_job(html: str) -> FetchedJob:
 
 
 def fetch_job_page(
-    url: str, *, timeout: float, max_bytes: int, transport: httpx.BaseTransport | None = None
+    url: str, *, timeout: float, max_bytes: int, transport: httpx.BaseTransport | None = None,
+    total_seconds: float | None = None,
 ) -> FetchedJob:
     try:
-        body, encoding = _download(url, timeout=timeout, max_bytes=max_bytes, transport=transport)
+        body, encoding = _download(url, timeout=timeout, max_bytes=max_bytes, transport=transport,
+                                   total_seconds=total_seconds)
     except httpx.HTTPError as exc:
-        raise JobFetchError(str(exc)) from exc
+        # The transport error text can describe internal network state; keep it out of the reply.
+        raise JobFetchError("could not connect to the page") from exc
     return extract_job(body.decode(encoding, errors="replace"))

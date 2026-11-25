@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 ApplicationStatus = Literal["saved", "applied", "interviewing", "offered", "rejected", "withdrawn", "accepted"]
 
@@ -39,6 +40,13 @@ class ProfilePatch(_Body):
     technical_depth: str | None = Field(default=None, max_length=100)
     preferred_template_id: UUID | None = None
 
+    @field_validator("address")
+    @classmethod
+    def _small_address(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
+        if value is not None and len(json.dumps(value)) > 2000:
+            raise ValueError("address is too large")
+        return value
+
 
 class ConsentIn(_Body):
     purpose: Literal["ai_processing"]
@@ -58,7 +66,8 @@ class ResumeTextIn(_Body):
 
 class JobIn(_Body):
     source_url: str | None = Field(default=None, max_length=2000)
-    description: str | None = None
+    # Transport guard; the service keeps the first 50,000 characters.
+    description: str | None = Field(default=None, max_length=200_000)
     title: str | None = Field(default=None, max_length=300)
     company: str | None = Field(default=None, max_length=300)
 

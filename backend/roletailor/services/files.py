@@ -75,14 +75,18 @@ def store(
     return row
 
 
-def store_upload(conn: Connection, org_id: UUID | str, data: bytes, filename: str | None) -> dict:
-    """Validate an untrusted upload (DOCX/PDF only, size-capped) and store it."""
+def sniff_upload(data: bytes) -> str:
+    """Media type of an untrusted upload (DOCX/PDF only, size-capped), from its bytes."""
     try:
-        media_type = sniff_media_type(data, get_settings().max_upload_bytes)
+        return sniff_media_type(data, get_settings().max_upload_bytes)
     except UnsupportedFile as exc:
         status = 413 if exc.code == "file_too_large" else 415
         raise AppError(status, exc.code, str(exc)) from exc
-    return store(conn, org_id, data, media_type=media_type, filename=filename, category="uploads")
+
+
+def store_upload(conn: Connection, org_id: UUID | str, data: bytes, filename: str | None) -> dict:
+    """Validate an untrusted upload and store it."""
+    return store(conn, org_id, data, media_type=sniff_upload(data), filename=filename, category="uploads")
 
 
 def get_clean(conn: Connection, file_id: UUID | str) -> dict:

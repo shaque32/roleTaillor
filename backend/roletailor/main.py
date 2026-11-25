@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from roletailor.api.bodylimit import BodyLimitMiddleware
 from roletailor.api.errors import install_error_handlers
 from roletailor.api.middleware import RequestContextMiddleware
 from roletailor.api.ratelimit import RateLimiter
@@ -16,7 +17,10 @@ from roletailor.logging_setup import configure_logging
 def create_app() -> FastAPI:
     settings = get_settings()
     configure_logging(settings.log_level)
-    app = FastAPI(title="RoleTailor API", version="1.0.0", docs_url="/docs", openapi_url="/openapi.json")
+    # Interactive docs and the schema are a development aid, not a public surface.
+    public_docs = settings.environment in {"dev", "test"}
+    app = FastAPI(title="RoleTailor API", version="1.0.0", docs_url="/docs" if public_docs else None,
+                  redoc_url=None, openapi_url="/openapi.json" if public_docs else None)
     app.state.limiter = RateLimiter(settings.redis_url)
 
     v1 = APIRouter(prefix="/v1")
@@ -35,5 +39,6 @@ def create_app() -> FastAPI:
                        "X-Organization-ID"],
         expose_headers=["X-Correlation-ID", "Retry-After"],
     )
+    app.add_middleware(BodyLimitMiddleware)
     app.add_middleware(RequestContextMiddleware)
     return app

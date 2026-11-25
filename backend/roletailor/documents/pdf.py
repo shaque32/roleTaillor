@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import shutil
+import signal
 import subprocess
 import tempfile
 from io import BytesIO
@@ -15,6 +17,7 @@ from pypdf.errors import PdfReadError
 
 from . import ocr
 from ._analysis import looks_like_heading, missing_section_findings, strip_bullet
+from ._ooxml import strip_external_relationships
 from .errors import InvalidDocument, OcrError, PdfConversionError
 from .model import Block, ParsedDocument
 from .pdf_layout import continues, paragraph_is_heading, pdf_paragraphs
@@ -41,22 +44,33 @@ def docx_to_pdf(data: bytes, timeout: int = 60) -> bytes:
     with tempfile.TemporaryDirectory(prefix="rt-soffice-") as tmp:
         workdir = Path(tmp)
         source = workdir / "resume.docx"
-        source.write_bytes(data)
+        # The DOCX is derived from an upload: drop anything LibreOffice would fetch.
+        source.write_bytes(strip_external_relationships(data))
         command = [
             binary,
             f"-env:UserInstallation={(workdir / 'profile').as_uri()}",
             "--headless", "--norestore", "--nologo", "--nodefault", "--nolockcheck",
             "--convert-to", "pdf", "--outdir", str(workdir / "out"), str(source),
         ]
+        # Own session, so a timeout kills soffice.bin too and not just the launcher. The
+        # converter gets no credentials: only what it needs to start.
+        env = {k: v for k, v in os.environ.items() if k in ("PATH", "LANG", "LC_ALL", "TMPDIR")}
         try:
-            result = subprocess.run(
-                command, capture_output=True, timeout=timeout, check=False,
-                env={**os.environ, "HOME": tmp},
+            process = subprocess.Popen(
+                command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                env={**env, "HOME": tmp}, start_new_session=True,
             )
-        except subprocess.TimeoutExpired as exc:
-            raise PdfConversionError(f"LibreOffice timed out after {timeout}s") from exc
         except OSError as exc:
             raise PdfConversionError(f"could not start LibreOffice: {exc}") from exc
+        try:
+            _, stderr_bytes = process.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired as exc:
+            raise PdfConversionError(f"LibreOffice timed out after {timeout}s") from exc
+        finally:
+            with contextlib.suppress(ProcessLookupError, PermissionError):
+                os.killpg(process.pid, signal.SIGKILL)
+            process.wait()
+        result = subprocess.CompletedProcess(command, process.returncode, b"", stderr_bytes)
         output = workdir / "out" / "resume.pdf"
         if result.returncode != 0 or not output.exists():
             stderr = result.stderr.decode(errors="replace").strip()[-500:]

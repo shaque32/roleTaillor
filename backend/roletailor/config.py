@@ -7,6 +7,7 @@ from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+ENVIRONMENTS = frozenset({"dev", "test", "staging", "prod"})
 
 
 class Settings(BaseSettings):
@@ -60,8 +61,39 @@ class Settings(BaseSettings):
     # Fixed-window rate limits, requests per minute per client.
     rate_limit_auth_per_minute: int = 10
     rate_limit_generation_per_minute: int = 20
+    # Failed and successful logins per account per hour, and sign-ups per client per day.
+    rate_limit_login_per_hour: int = 30
+    rate_limit_register_per_day: int = 20
+    # Per-user limits on the other expensive endpoints, requests per minute.
+    rate_limit_upload_per_minute: int = 10
+    rate_limit_job_per_minute: int = 15
+    rate_limit_export_per_minute: int = 20
+    rate_limit_billing_per_minute: int = 6
+    rate_limit_account_per_minute: int = 5
+    # Spend ceilings: every run (first generation, iteration or retry) calls the models,
+    # and only a workflow's first run is ever charged.
+    generation_runs_per_org_per_day: int = 60
+    max_iterations_per_workflow: int = 15
+    # Request bodies. Uploads get max_upload_bytes plus multipart overhead.
+    max_json_body_bytes: int = 512 * 1024
+    # Client address for rate limiting. `client_ip_header` is a header the platform edge
+    # sets itself and overwrites (Fly: "Fly-Client-IP"); empty uses the socket peer.
+    # Requests the web app proxies carry the browser's address in X-RT-Client-IP, which
+    # is believed only together with this shared secret in X-RT-Proxy-Secret.
+    client_ip_header: str = ""
+    proxy_shared_secret: str = ""
+    # When set, GET /metrics needs "Authorization: Bearer <token>". Outside dev/test,
+    # /metrics is also hidden from requests that arrived through the public edge.
+    metrics_token: str = ""
+    # Document parsing runs in a child process with these limits.
+    parse_timeout_seconds: float = 75.0
+    parse_memory_limit_mb: int = 1536
+    parse_cpu_seconds: int = 60
+    max_resume_pdf_pages: int = 20
+    max_resume_blocks: int = 3000
     # Job URL fetching
     job_fetch_timeout_seconds: float = 10.0
+    job_fetch_total_seconds: float = 25.0  # wall-clock budget for one URL, redirects included
     job_fetch_max_bytes: int = 2 * 1024 * 1024
     share_link_max_hours: int = 24 * 30
     celery_task_always_eager: bool = False
@@ -69,11 +101,30 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _check_production_config(self) -> Settings:
-        if self.environment not in {"dev", "test"}:
-            if self.secret_key == "dev-insecure-secret-change-me" or len(self.secret_key) < 32:
-                raise ValueError("RT_SECRET_KEY must be set to 32+ characters outside dev/test")
-            if self.storage_backend == "local":
-                raise ValueError("RT_STORAGE_BACKEND must not be 'local' outside dev/test")
+        if self.environment not in ENVIRONMENTS:
+            raise ValueError(f"RT_ENVIRONMENT must be one of {sorted(ENVIRONMENTS)}")
+        if self.environment in {"dev", "test"}:
+            return self
+        problems: list[str] = []
+        if self.secret_key == "dev-insecure-secret-change-me" or len(self.secret_key) < 32:
+            problems.append("RT_SECRET_KEY must be set to 32+ characters")
+        if self.storage_backend == "local":
+            problems.append("RT_STORAGE_BACKEND must not be 'local'")
+        if ":rt_app@" in self.database_url or ":rt_owner@" in self.database_url:
+            problems.append("RT_DATABASE_URL still uses a development password")
+        if len(self.proxy_shared_secret) < 32:
+            problems.append("RT_PROXY_SHARED_SECRET must be set to 32+ characters (the web app sends"
+                            " the same value as API_PROXY_SECRET)")
+        for name, url in (("RT_API_BASE_URL", self.api_base_url), ("RT_APP_BASE_URL", self.app_base_url),
+                          *(("RT_CORS_ORIGINS", origin) for origin in self.cors_origins)):
+            if not url.startswith("https://") or "localhost" in url or "127.0.0.1" in url:
+                problems.append(f"{name} must be a public https URL, got {url!r}")
+        if "*" in self.cors_origins:
+            problems.append("RT_CORS_ORIGINS must not contain '*'")
+        if self.environment == "prod" and self.llm_mode != "live":
+            problems.append("RT_LLM_MODE must be 'live' in prod")
+        if problems:
+            raise ValueError("unsafe configuration outside dev/test: " + "; ".join(problems))
         return self
 
 
