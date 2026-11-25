@@ -17,6 +17,7 @@ import httpx
 from sqlalchemy import Connection, text
 
 from roletailor import db
+from roletailor.ai.monitoring import PrometheusSink, TeeSink
 from roletailor.ai.providers.base import ProviderError
 from roletailor.domain.models import JobAnalysis, ResumeStructure, TailoringResult
 from roletailor.logging_setup import correlation_id
@@ -24,6 +25,7 @@ from roletailor.services import audit, billing, files, rendering, resumes, users
 from roletailor.services.errors import AppError
 from roletailor.services.metrics_sink import DbMetricsSink
 from roletailor.services.sql import fetch_one, jsonb
+from roletailor.worker import metrics as worker_metrics
 
 log = logging.getLogger(__name__)
 
@@ -105,7 +107,7 @@ def _cached_job(job: dict) -> JobAnalysis | None:
     return JobAnalysis.model_validate(stored)
 
 
-def _run_pipeline(inputs: RunInputs, sink: DbMetricsSink, iteration: int,
+def _run_pipeline(inputs: RunInputs, sink: TeeSink, iteration: int,
                   focus_block_ids: list[str] | None) -> TailoringResult:
     from roletailor.ai.gateway import build_gateway
     from roletailor.pipeline.orchestrator import TailoringPrefs, tailor
@@ -279,11 +281,22 @@ def run(org_id: str, workflow_id: str, iteration: int,
     inputs = _claim(org_id, workflow_id, iteration)
     if inputs is None:
         return "skipped"
-    sink = DbMetricsSink(org_id, workflow_id)
-    result = _run_pipeline(inputs, sink, iteration, focus_block_ids)
-    output = rendering.render_primary(inputs.base, result.edits, result.structure.model_dump())
-    if not _persist(org_id, inputs, result, output, iteration, sink.metric_ids):
+    db_sink = DbMetricsSink(org_id, workflow_id)
+    sink = TeeSink(db_sink, PrometheusSink())
+    try:
+        result = _run_pipeline(inputs, sink, iteration, focus_block_ids)
+        output = rendering.render_primary(inputs.base, result.edits, result.structure.model_dump())
+        persisted = _persist(org_id, inputs, result, output, iteration, db_sink.metric_ids)
+    except BaseException:
+        worker_metrics.add_failed_cost(sink.total_cost_usd)  # failed and retried runs still spent
+        raise
+    if not persisted:
+        worker_metrics.add_failed_cost(sink.total_cost_usd)
         return "discarded"
+    try:
+        worker_metrics.observe_generation(result)
+    except Exception:  # noqa: BLE001 - metrics must never fail a persisted generation
+        log.debug("generation metrics failed", exc_info=True)
     return "completed"
 
 

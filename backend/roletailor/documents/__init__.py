@@ -7,6 +7,7 @@ from .model import Block, EditRejected, ParsedDocument
 from .pdf import count_pdf_pages, docx_to_pdf, read_pdf_text
 from .pdf_layout import pages_without_text
 from .pdf_writer import PdfEditReport, edit_pdf_in_place, fit_pdf_edits
+from .plain_text import read_plain_text
 from .render import render_structured_docx
 
 __all__ = [
@@ -26,5 +27,6 @@ __all__ = [
     "pages_without_text",
     "read_docx",
     "read_pdf_text",
+    "read_plain_text",
     "render_structured_docx",
 ]

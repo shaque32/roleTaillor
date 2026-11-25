@@ -121,8 +121,11 @@ export interface ResumeVersionSummary {
   created_at: ISODate;
 }
 
+export type ResumeSourceFormat = "docx" | "pdf" | "guided" | "text";
+
 export interface ResumeVersion extends ResumeVersionSummary {
   resume_id?: UUID;
+  source_format?: ResumeSourceFormat | null;
   parent_version_id?: UUID | null;
   blocks: Block[];
   findings: ExtractionFinding[];
@@ -207,6 +210,11 @@ export interface GuidedSection {
   kind: SectionKind;
   title: string;
   items: GuidedItem[];
+}
+
+export interface ResumeTextBody {
+  text: string;
+  name: string;
 }
 
 export interface GuidedResumeBody {
@@ -389,6 +397,10 @@ export type CheckoutMode = "subscription" | "pay_per_use";
 
 export interface CheckoutResult {
   checkout_url: string;
+}
+
+export interface PortalResult {
+  portal_url: string;
 }
 
 export interface PaymentOption {

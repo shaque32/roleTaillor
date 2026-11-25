@@ -1,0 +1,17 @@
+name: monitoring-rules
+on:
+  pull_request:
+    paths: ["ops/monitoring/**", "docs/monitoring-contract.md", "docs/runbooks/ai-alerts.md", ".github/workflows/monitoring.yml"]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Structure, runbook anchors and metric names
+        run: pip install pyyaml && python3 ops/monitoring/check_rules.py
+      - name: promtool check and unit tests
+        run: |
+          docker run --rm -v "$PWD/ops/monitoring/prometheus:/p" --entrypoint sh prom/prometheus:v2.53.2 -c \
+            'promtool check rules /p/rules/recording.yml /p/rules/alerts.yml && promtool test rules /p/tests/alerts_test.yml'

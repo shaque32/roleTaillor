@@ -41,7 +41,7 @@ class Block(BaseModel):
 
 
 class ParsedDocument(BaseModel):
-    source_format: Literal["docx", "pdf", "guided"]
+    source_format: Literal["docx", "pdf", "guided", "text"]
     blocks: list[Block]
     # Page size, margins, default fonts, section count. Stored in
     # resume_versions.layout_metadata.

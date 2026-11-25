@@ -181,6 +181,41 @@ def create_from_upload(
     return {"resume": resume, "version": version_out(version)}
 
 
+MIN_TEXT_CHARS = 200
+MAX_TEXT_CHARS = 50_000
+
+
+def create_from_text(principal: Principal, text: str, name: str | None) -> dict:
+    """Create a resume from pasted plain text. No source file is stored; the text lives
+    in the version's blocks and exports render through the structured template."""
+    from roletailor import documents
+
+    if len(text) > MAX_TEXT_CHARS:
+        raise AppError(
+            413, "resume_text_too_long",
+            f"Pasted resumes can be at most {MAX_TEXT_CHARS:,} characters.",
+        )
+    if len("".join(text.split())) < MIN_TEXT_CHARS:
+        raise AppError(
+            422, "resume_text_too_short",
+            "That looks too short to be a full resume. Paste the complete text of your resume.",
+        )
+    doc = documents.read_plain_text(text)
+    with db.tenant_tx(principal.org_id) as conn:
+        resume = _insert_resume(conn, principal, _resume_name(name, "Pasted resume"), "upload")
+        version = insert_version(
+            conn, resume["id"], content=document_content(doc),
+            layout_metadata=doc.layout_metadata, findings=doc.findings,
+            source_file_id=None, parent_version_id=None,
+        )
+        audit.record(
+            conn, org_id=principal.org_id, action="resume.paste", resource_type="resume",
+            resource_id=resume["id"], actor_user_id=principal.user_id,
+            metadata={"char_count": len(text)},
+        )
+    return {"resume": resume, "version": version_out(version)}
+
+
 def create_guided(principal: Principal, form: guided.GuidedResume) -> dict:
     """Render the form to a DOCX, then parse that DOCX so the version's block ids
     address the stored file exactly like an upload's do."""
