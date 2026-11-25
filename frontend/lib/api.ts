@@ -5,6 +5,7 @@ import type {
   BillingStatus,
   CheckoutMode,
   CheckoutResult,
+  PortalResult,
   Consent,
   ConsentBody,
   ExportKind,
@@ -161,6 +162,7 @@ export const api = {
     form.append("name", name);
     return request<ResumeWithVersion>("/resumes", { method: "POST", form });
   },
+  createFromText: (text: string, name: string) => request<ResumeWithVersion>("/resumes/text", { json: { text, name } }),
   createGuided: (body: GuidedResumeBody) => request<ResumeWithVersion>("/resumes/guided", { json: body }),
   resume: (rid: string) => request<ResumeDetail>(`/resumes/${id(rid)}`),
   renameResume: (rid: string, name: string) => request<ResumeDetail>(`/resumes/${id(rid)}`, { method: "PATCH", json: { name } }),
@@ -194,6 +196,7 @@ export const api = {
   deleteApplication: (aid: string) => request<void>(`/applications/${id(aid)}`, { method: "DELETE" }),
 
   billing: () => request<BillingStatus>("/billing/status"),
+  portal: () => request<PortalResult>("/billing/portal", { method: "POST" }),
   checkout: (mode: CheckoutMode) => request<CheckoutResult>("/billing/checkout", { json: { mode } }),
 };
 

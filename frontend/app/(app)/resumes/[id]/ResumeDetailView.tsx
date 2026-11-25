@@ -143,7 +143,7 @@ export function ResumeDetailView() {
           </Card>
           {resume.data.origin && (
             <p className="text-xs text-ink-muted">
-              <Badge>{resume.data.origin === "upload" ? "Uploaded" : "Built here"}</Badge> Added {formatDate(resume.data.created_at)}
+              <Badge>{v?.source_format === "text" ? "Pasted" : resume.data.origin === "upload" ? "Uploaded" : "Built here"}</Badge> Added {formatDate(resume.data.created_at)}
             </p>
           )}
         </div>
