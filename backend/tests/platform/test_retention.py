@@ -331,3 +331,25 @@ def test_failed_object_deletes_are_retried(make_user, classic_docx, monkeypatch)
     assert pending() == []
     with pytest.raises(FileNotFoundError):
         storage.get(obj["object_key"], obj["object_version"])
+
+
+def test_failing_object_does_not_hold_back_the_queue(monkeypatch):
+    with db.global_tx() as conn:
+        conn.execute(text("DELETE FROM pending_object_deletions"))
+        conn.execute(text("INSERT INTO pending_object_deletions (object_key) VALUES ('stuck'), ('b'), ('c')"))
+    storage = get_storage()
+    seen = []
+
+    def delete(self, key, version=None):
+        seen.append(key)
+        if key == "stuck":
+            raise OSError("object store unavailable")
+
+    monkeypatch.setattr(type(storage), "delete", delete)
+    # The batch is smaller than the queue: the pending count still covers all of it.
+    assert retention.delete_pending_objects(limit=1) == (0, 3)
+    assert retention.delete_pending_objects(limit=1) == (1, 2)
+    assert retention.delete_pending_objects(limit=1) == (1, 1)
+    assert seen == ["stuck", "b", "c"]
+    with db.global_tx() as conn:
+        conn.execute(text("DELETE FROM pending_object_deletions"))

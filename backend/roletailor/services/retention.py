@@ -125,11 +125,13 @@ def _purge_resume(conn: Connection, org_id: UUID | str, resume_id: UUID | str,
 def delete_pending_objects(*, limit: int = 5000) -> tuple[int, int]:
     """Delete queued storage objects; returns (deleted, still pending). A row leaves the
     queue only after the object store confirmed the delete, so failures and crashes are
-    retried on the next run. Deleting an object that is already gone succeeds."""
+    retried on the next run. Deleting an object that is already gone succeeds. Objects
+    with the fewest failed attempts go first, so ones that keep failing cannot hold back
+    the rest, and the pending count covers the whole queue, not only this batch."""
     with db.global_tx() as conn:
         pending = fetch_all(
             conn, "SELECT id, object_key, object_version FROM pending_object_deletions"
-            " ORDER BY id LIMIT :limit", {"limit": limit})
+            " ORDER BY attempts, id LIMIT :limit", {"limit": limit})
     storage = get_storage()
     deleted = 0
     for row in pending:
@@ -145,7 +147,9 @@ def delete_pending_objects(*, limit: int = 5000) -> tuple[int, int]:
         with db.global_tx() as conn:
             conn.execute(text("DELETE FROM pending_object_deletions WHERE id = :id"), {"id": row["id"]})
         deleted += 1
-    return deleted, len(pending) - deleted
+    with db.global_tx() as conn:
+        remaining = conn.execute(text("SELECT count(*) FROM pending_object_deletions")).scalar_one()
+    return deleted, remaining
 
 
 def purge_due(*, limit: int | None = None) -> PurgeSummary:
