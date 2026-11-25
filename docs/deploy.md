@@ -76,7 +76,7 @@ These steps need your Fly account and credentials. Start with staging.
    ```bash
    fly mpg create --name roletailor-staging --region iad      # choose the Developer plan for staging and Basic for prod
    ```
-   Generate two passwords with `openssl rand -hex 24` and keep them in your password manager. Then, from the repo root, open an admin session with `fly mpg connect`, which needs no connection string. If you use the admin connection string instead, keep its password in `~/.pgpass` (mode 600) and pass psql a URL without the password, so the admin credential also stays out of the process list. In that session, enter them at psql's own prompts, so they never reach a command line, shell history or the process list:
+   Generate two passwords with `openssl rand -hex 24` and keep them in your password manager. Then, from the repo root, open an admin session that keeps the admin password out of the process list too: store it in `~/.pgpass` (mode 600) and connect with a URL that has no password in it, for example through `fly mpg proxy` and `psql "postgresql://<admin-user>@localhost:<port>/<db>"` (check `flyctl mpg --help` for the exact subcommand in your version). Do not pass psql a URL that contains the password, and avoid `fly mpg connect`, which may hand psql such a URL. In that session, enter them at psql's own prompts, so they never reach a command line, shell history or the process list:
    ```
    \prompt 'rt_owner password: ' owner_password
    \prompt 'rt_app password: ' app_password

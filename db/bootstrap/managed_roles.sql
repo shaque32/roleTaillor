@@ -1,7 +1,7 @@
 -- One-time bootstrap for a managed PostgreSQL cluster (e.g. Fly Managed Postgres).
 -- Run as the cluster admin user, connected to the target (empty) application database:
 --
---   fly mpg connect        (or psql with a password-free URL and the password in ~/.pgpass)
+--   psql "postgresql://<admin-user>@<host>:<port>/<db>"   (no password in the URL; keep it in ~/.pgpass)
 --     \prompt 'rt_owner password: ' owner_password
 --     \prompt 'rt_app password: ' app_password
 --     \i db/bootstrap/managed_roles.sql
