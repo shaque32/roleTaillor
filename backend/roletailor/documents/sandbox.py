@@ -18,13 +18,18 @@ import subprocess
 import sys
 import threading
 import zipfile
+from typing import TYPE_CHECKING
 
 from .errors import InvalidDocument
 from .model import ParsedDocument
 
+if TYPE_CHECKING:
+    from .pdf import OcrOptions
+
 MAX_ZIP_MEMBERS = 2000
 MAX_ZIP_TOTAL_BYTES = 64 * 1024 * 1024
 EXIT_REJECTED = 3
+EXIT_USAGE = 2
 _PASS_ENV = ("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "TESSDATA_PREFIX", "OMP_THREAD_LIMIT",
              "RT_TESSERACT",
              "PYTHONPATH", "VIRTUAL_ENV", "LD_LIBRARY_PATH")
@@ -45,6 +50,10 @@ class ParseFailed(InvalidDocument):
     """The child crashed, ran out of memory or time, or could not read the file."""
 
 
+class ParseTimeout(ParseFailed):
+    """The child exceeded its wall-clock timeout or its CPU limit."""
+
+
 def check_docx_container(data: bytes) -> None:
     try:
         infos = zipfile.ZipFile(io.BytesIO(data)).infolist()
@@ -55,7 +64,8 @@ def check_docx_container(data: bytes) -> None:
                                "images or objects and try again.")
 
 
-def _parse(kind: str, data: bytes, max_pages: int, max_blocks: int) -> ParsedDocument:
+def _parse(kind: str, data: bytes, max_pages: int, max_blocks: int,
+           ocr: OcrOptions) -> ParsedDocument:
     if kind == "docx":
         from .docx_reader import read_docx
 
@@ -66,23 +76,47 @@ def _parse(kind: str, data: bytes, max_pages: int, max_blocks: int) -> ParsedDoc
 
         if count_pdf_pages(data) > max_pages:
             raise DocumentRejected(f"Resumes can be at most {max_pages} pages.")
-        doc = read_pdf_text(data)
+        doc = read_pdf_text(data, ocr=ocr)
     if len(doc.blocks) > max_blocks:
         raise DocumentRejected("This document has too many paragraphs to be a resume.")
     return doc
 
 
-def main(argv: list[str]) -> int:
+CPU_HARD_GRACE_SECONDS = 2
+
+
+def apply_limits(memory_mb: int, cpu_seconds: int) -> None:
+    """Cap this process's address space and CPU time; children (Tesseract) inherit both.
+
+    The CPU budget is the soft limit, which ends the process with SIGXCPU so the parent can
+    tell "ran out of CPU" from a crash. The hard limit sits just above it as the forced stop:
+    with both equal the kernel sends SIGKILL first and the reason is lost.
+    """
     import resource
 
-    kind, memory_mb, cpu_seconds, max_pages, max_blocks = argv[0], *map(int, argv[1:5])
     limit = memory_mb * 1024 * 1024
     resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
-    resource.setrlimit(resource.RLIMIT_CPU, (cpu_seconds, cpu_seconds))
+    resource.setrlimit(resource.RLIMIT_CPU, (cpu_seconds, cpu_seconds + CPU_HARD_GRACE_SECONDS))
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+
+
+def main(argv: list[str]) -> int:
+
+    from .pdf import OcrOptions
+
+    # Strict argv: kind memory_mb cpu_seconds max_pages max_blocks ocr(0|1) ocr_max_pages ocr_deadline
+    if len(argv) != 8 or argv[0] not in ("docx", "pdf") or argv[5] not in ("0", "1"):
+        sys.stderr.write("usage: sandbox docx|pdf MEMORY_MB CPU_S MAX_PAGES MAX_BLOCKS 0|1 OCR_PAGES OCR_S\n")
+        return EXIT_USAGE
+    try:
+        kind, memory_mb, cpu_seconds, max_pages, max_blocks = argv[0], *map(int, argv[1:5])
+        ocr = OcrOptions(enabled=argv[5] == "1", max_pages=int(argv[6]), deadline=float(argv[7]))
+    except ValueError:
+        return EXIT_USAGE
+    apply_limits(memory_mb, cpu_seconds)
     data = sys.stdin.buffer.read()
     try:
-        doc = _parse(kind, data, max_pages, max_blocks)
+        doc = _parse(kind, data, max_pages, max_blocks, ocr)
     except DocumentRejected as exc:
         sys.stdout.write(json.dumps({"rejected": str(exc)}))
         return EXIT_REJECTED
@@ -91,23 +125,29 @@ def main(argv: list[str]) -> int:
 
 
 def parse_untrusted(data: bytes, kind: str, *, timeout: float, memory_mb: int, cpu_seconds: int,
-                    max_pages: int, max_blocks: int) -> ParsedDocument:
+                    max_pages: int, max_blocks: int, ocr: bool = False, ocr_max_pages: int = 6,
+                    ocr_deadline: float = 45.0) -> ParsedDocument:
     """Parse `data` ("docx" or "pdf") in a sandboxed child. Raises DocumentRejected with a
-    user-facing reason, ParserBusy when no slot frees up, ParseFailed otherwise."""
+    user-facing reason, ParserBusy when no slot frees up, ParseFailed (ParseTimeout when the
+    child ran out of wall-clock or CPU time) otherwise.
+
+    Scanned PDFs are only OCR'd when `ocr` is true (request paths leave it off); the outcome
+    is then in `layout_metadata["ocr_outcome"]` of a document without blocks."""
     if not _SLOTS.acquire(timeout=SLOT_WAIT_SECONDS):
         raise ParserBusy("all document parser slots are busy")
     try:
         env = {k: v for k, v in os.environ.items() if k in _PASS_ENV}
         proc = subprocess.Popen(
             [sys.executable, "-m", "roletailor.documents.sandbox", kind, str(memory_mb),
-             str(cpu_seconds), str(max_pages), str(max_blocks)],
+             str(cpu_seconds), str(max_pages), str(max_blocks), "1" if ocr else "0",
+             str(ocr_max_pages), repr(float(ocr_deadline))],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
             env=env, start_new_session=True,
         )
         try:
             out, _ = proc.communicate(data, timeout=timeout)
         except subprocess.TimeoutExpired as exc:
-            raise ParseFailed("parsing timed out") from exc
+            raise ParseTimeout("parsing timed out") from exc
         finally:
             # Always, even after a clean exit: a parser that died on a signal can leave
             # Tesseract running, and `poll()` only knows about the parser itself.
@@ -120,6 +160,8 @@ def parse_untrusted(data: bytes, kind: str, *, timeout: float, memory_mb: int, c
         except (ValueError, KeyError, TypeError) as exc:
             raise ParseFailed("parser gave no reason") from exc
         raise DocumentRejected(reason)
+    if proc.returncode == -signal.SIGXCPU:
+        raise ParseTimeout("parser exceeded its CPU limit")
     if proc.returncode != 0:
         raise ParseFailed(f"parser exited with status {proc.returncode}")
     try:

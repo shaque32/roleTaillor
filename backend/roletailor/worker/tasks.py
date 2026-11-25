@@ -7,9 +7,9 @@ import time
 from uuid import uuid4
 
 from roletailor.logging_setup import correlation_id
-from roletailor.services import tailoring_runner
+from roletailor.services import resume_ocr, tailoring_runner
 from roletailor.worker.celery_app import celery_app
-from roletailor.worker.metrics import WORKFLOW_RUN_SECONDS, WORKFLOW_RUNS
+from roletailor.worker.metrics import OCR_JOB_SECONDS, OCR_JOBS, WORKFLOW_RUN_SECONDS, WORKFLOW_RUNS
 
 log = logging.getLogger(__name__)
 MAX_RETRIES = 2
@@ -41,6 +41,32 @@ def run_tailoring(self, org_id: str, workflow_id: str, iteration: int,
         WORKFLOW_RUNS.labels(outcome).inc()
         WORKFLOW_RUN_SECONDS.observe(time.monotonic() - started)
         log.info("tailoring run finished", extra={"workflow_id": workflow_id, "outcome": outcome})
+        return outcome
+    finally:
+        correlation_id.reset(token)
+
+
+@celery_app.task(bind=True, name="roletailor.worker.tasks.ocr_resume", max_retries=MAX_RETRIES)
+def ocr_resume(self, org_id: str, resume_id: str, correlation: str | None = None) -> str:
+    """Read a scanned resume with OCR (see services/resume_ocr). Idempotent under redelivery."""
+    token = correlation_id.set(correlation or f"task-{uuid4().hex[:12]}")
+    started = time.monotonic()
+    try:
+        try:
+            outcome = resume_ocr.run(org_id, resume_id, final=self.request.retries >= MAX_RETRIES)
+        except Exception as exc:
+            if resume_ocr.is_transient(exc) and self.request.retries < MAX_RETRIES:
+                log.warning("transient ocr failure, retrying",
+                            extra={"resume_id": resume_id, "error": repr(exc)})
+                OCR_JOBS.labels("retried").inc()
+                raise self.retry(exc=exc, countdown=_backoff_seconds(self.request.retries)) from exc
+            # Raised before the attempt was claimed, so there is no attempt to mark failed
+            # (a newer one may own the row). The resume reads as timed out once stale.
+            log.exception("ocr failed before claiming the resume", extra={"resume_id": resume_id})
+            outcome = resume_ocr.FAILED
+        OCR_JOBS.labels(outcome).inc()
+        OCR_JOB_SECONDS.observe(time.monotonic() - started)
+        log.info("ocr finished", extra={"resume_id": resume_id, "outcome": outcome})
         return outcome
     finally:
         correlation_id.reset(token)

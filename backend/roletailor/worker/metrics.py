@@ -20,6 +20,11 @@ WORKFLOW_RUN_SECONDS = Histogram(
     "roletailor_workflow_run_seconds", "Tailoring run duration from task start, excluding queue wait",
     buckets=(5, 15, 30, 60, 120, 300, 600),
 )
+OCR_JOBS = Counter("roletailor_ocr_jobs_total", "Scanned-resume OCR jobs by outcome", ["outcome"])
+OCR_JOB_SECONDS = Histogram(
+    "roletailor_ocr_job_seconds", "OCR job duration from task start, excluding queue wait",
+    buckets=(2, 5, 10, 20, 40, 80, 120, 180),
+)
 GENERATION_COST = Histogram(
     "roletailor_generation_cost_usd", "AI cost of completed generations",
     buckets=(0.005, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.08, 0.10, 0.15, 0.25, 0.5, 1),
@@ -53,6 +58,8 @@ for _check, _results in (("page_limit", ("pass", "fail", "skipped")), ("degraded
         GENERATION_CHECKS.labels(_check, _result)
 for _outcome in ("completed", "failed", "retried", "skipped", "discarded"):
     WORKFLOW_RUNS.labels(_outcome)
+for _outcome in ("ready", "no_text", "timeout", "failed", "skipped", "retried"):
+    OCR_JOBS.labels(_outcome)
 
 
 def add_failed_cost(usd: float) -> None:

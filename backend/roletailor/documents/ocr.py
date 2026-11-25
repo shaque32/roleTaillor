@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from io import StringIO
 from pathlib import Path
 
-from .errors import InvalidDocument, OcrError
+from .errors import InvalidDocument, OcrError, OcrTimeout
 
 DEFAULT_DPI = 300
 # Neither rendered side may exceed this; bounds memory for oversized page boxes.
@@ -66,10 +66,10 @@ def ocr_pdf_pages(
 ) -> list[OcrPage]:
     """OCR the given pages (default: all) of a PDF.
 
-    Raises `OcrError` when the binary is missing, the document has more than `max_pages`
-    pages to read, a page cannot be rendered, Tesseract fails or exceeds `timeout` seconds
-    on a page, or the whole read exceeds `deadline` seconds (so one upload cannot monopolise
-    a worker); `InvalidDocument` when the bytes are not a readable PDF.
+    Raises `OcrError` (`OcrTimeout` for the two time limits) when the binary is missing, the
+    document has more than `max_pages` pages to read, a page cannot be rendered, Tesseract
+    fails or exceeds `timeout` seconds on a page, or the whole read exceeds `deadline` seconds
+    (so one upload cannot monopolise a worker); `InvalidDocument` when the bytes are not a readable PDF.
     """
     binary = tesseract_path()
     if binary is None or shutil.which(binary) is None:
@@ -86,7 +86,7 @@ def ocr_pdf_pages(
         for index in indexes:
             remaining = deadline - (time.monotonic() - started)
             if remaining <= 0:
-                raise OcrError(f"OCR exceeded its {deadline:.0f}s budget")
+                raise OcrTimeout(f"OCR exceeded its {deadline:.0f}s budget")
             image = _render_page(pdf, index, dpi)
             page_timeout = max(1, min(timeout, math.ceil(remaining)))
             lines, confidence = parse_tsv(_run_tesseract(binary, image, lang, page_timeout))
@@ -137,7 +137,7 @@ def _run_tesseract(binary: str, image, lang: str, timeout: int) -> str:
                 env={**os.environ, "OMP_THREAD_LIMIT": "1"},
             )
         except subprocess.TimeoutExpired as exc:
-            raise OcrError(f"Tesseract timed out after {timeout}s") from exc
+            raise OcrTimeout(f"Tesseract timed out after {timeout}s") from exc
         except OSError as exc:
             raise OcrError(f"could not start Tesseract: {exc}") from exc
     if result.returncode != 0:

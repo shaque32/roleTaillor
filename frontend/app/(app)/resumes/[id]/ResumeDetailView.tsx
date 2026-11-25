@@ -5,16 +5,60 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { CheckCircle2, Lock } from "lucide-react";
 import { api } from "@/lib/api";
-import { useResource } from "@/lib/hooks";
+import { useResource, useResumeProcessing } from "@/lib/hooks";
+import { processingMessage } from "@/lib/processing";
 import { cx, formatDate } from "@/lib/format";
-import type { ExtractionFinding } from "@/lib/types";
-import { Alert, Badge, ButtonLink, Card, CardBody, CardHeader, PageHeader, Select, Skeleton, SkeletonRows } from "@/components/ui";
+import type { ExtractionFinding, ResumeDetail } from "@/lib/types";
+import { Alert, Badge, Button, ButtonLink, Card, CardBody, CardHeader, PageHeader, Select, Skeleton, SkeletonRows } from "@/components/ui";
+import { ReadingScan, UnreadableScan } from "@/components/ScanStatus";
 import { VersionList } from "../VersionList";
 
 function findingTone(f: ExtractionFinding): "info" | "warning" | "error" {
   if (f.severity === "error") return "error";
   if (f.severity === "info") return "info";
   return "warning";
+}
+
+/** A resume that is still being read from a scanned PDF, or could not be read. Replaces the page body until it is ready. */
+function ScanDetail({ resume, onReady }: { resume: ResumeDetail & { processing: NonNullable<ResumeDetail["processing"]> }; onReady: (d: ResumeDetail) => void }) {
+  const router = useRouter();
+  const [removing, setRemoving] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
+  const { processing, startedAt, retrying, retry, problem, gone } = useResumeProcessing(resume.id, resume.processing, onReady);
+
+  async function remove() {
+    setRemoving(true);
+    setRemoveError(null);
+    try {
+      await api.archiveResume(resume.id);
+      router.push("/resumes");
+    } catch (e) {
+      setRemoveError(e instanceof Error ? e.message : "Couldn't remove this resume.");
+      setRemoving(false);
+    }
+  }
+
+  return (
+    <>
+      <PageHeader back={{ href: "/resumes", label: "Resumes" }} title={resume.name} description="This PDF is a scan, so we read its text from the page images." />
+      <div className="max-w-2xl">
+        {gone ? (
+          <Alert tone="warning">This resume was removed.</Alert>
+        ) : processing.status === "processing" ? (
+          <ReadingScan
+            startedAt={startedAt}
+            leaveHint="You can leave this page. We'll keep going and it will appear in your resumes when it's ready."
+          />
+        ) : (
+          <UnreadableScan message={processingMessage(processing)} problem={problem ?? removeError} onRetry={() => void retry()} retrying={retrying}>
+            <Button variant="secondary" onClick={() => void remove()} loading={removing}>
+              Remove this resume
+            </Button>
+          </UnreadableScan>
+        )}
+      </div>
+    </>
+  );
 }
 
 export function ResumeDetailView() {
@@ -34,6 +78,10 @@ export function ResumeDetailView() {
 
   if (resume.loading) return <SkeletonRows rows={6} />;
   if (resume.error || !resume.data) return <Alert tone="error">{resume.error?.message ?? "Resume not found."}</Alert>;
+
+  if (resume.data.processing) {
+    return <ScanDetail resume={{ ...resume.data, processing: resume.data.processing }} onReady={(d) => resume.setData(d)} />;
+  }
 
   const v = version.data;
   const textBlocks = v?.blocks.filter((b) => b.text.trim()) ?? [];

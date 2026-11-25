@@ -2,14 +2,16 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Archive, FilePlus2, FileText, History, Pencil, Upload } from "lucide-react";
 import { api } from "@/lib/api";
-import { useResource } from "@/lib/hooks";
+import { usePoll, useResource } from "@/lib/hooks";
+import { isReading, isUnavailable, isUnreadable, processingMessage, startedAtMs } from "@/lib/processing";
 import { cx, formatDate } from "@/lib/format";
 import type { ResumeListItem } from "@/lib/types";
 import { Alert, Badge, Button, ButtonLink, Card, Dialog, EmptyState, IconButton, Input, PageHeader, SkeletonRows, focusRing, useToast } from "@/components/ui";
 import { ResumeUpload } from "@/components/ResumeUpload";
+import { ReadingBadge, UnreadableBadge } from "@/components/ScanStatus";
 import { VersionList } from "./VersionList";
 
 export function Resumes() {
@@ -21,6 +23,41 @@ export function Resumes() {
   const [archiving, setArchiving] = useState<ResumeListItem | null>(null);
   const [versionsFor, setVersionsFor] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [retrying, setRetrying] = useState<string | null>(null);
+
+  // Rows being read from a scan flip to ready on their own. setData (not reload) so the list never flashes a skeleton.
+  const reading = data?.filter(isReading) ?? [];
+  const pollFrom = reading.reduce((t, r) => Math.min(t, startedAtMs(r.processing)), Date.now());
+  // Bumped by every local change to the list. A poll that started before the change carries
+  // older state, so its response is dropped instead of overwriting the newer rows.
+  const listEpoch = useRef(0);
+  const touchList = () => {
+    listEpoch.current += 1;
+  };
+  usePoll(
+    async (signal) => {
+      const epoch = listEpoch.current;
+      const rows = await api.resumes();
+      if (!signal.aborted && epoch === listEpoch.current) setData(rows);
+      return true;
+    },
+    reading.length > 0,
+    pollFrom,
+  );
+
+  async function retryScan(r: ResumeListItem) {
+    setRetrying(r.id);
+    try {
+      const d = await api.retryResumeProcessing(r.id);
+      touchList();
+      setData((xs) => xs?.map((x) => (x.id === r.id ? { ...x, processing: d.processing } : x)));
+    } catch (err) {
+      toast.error(err);
+      void reload();
+    } finally {
+      setRetrying(null);
+    }
+  }
 
   async function rename(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -30,6 +67,7 @@ export function Resumes() {
     setBusy(true);
     try {
       await api.renameResume(renaming.id, name);
+      touchList();
       setData((xs) => xs?.map((r) => (r.id === renaming.id ? { ...r, name } : r)));
       setRenaming(null);
       toast.success("Resume renamed.");
@@ -45,6 +83,7 @@ export function Resumes() {
     setBusy(true);
     try {
       await api.archiveResume(archiving.id);
+      touchList();
       setData((xs) => xs?.filter((r) => r.id !== archiving.id));
       setArchiving(null);
       toast.success("Resume archived.");
@@ -102,18 +141,31 @@ export function Resumes() {
                       </Link>
                       <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink-muted">
                         <Badge>{r.origin === "upload" ? "Uploaded" : "Built here"}</Badge>
+                        {isReading(r) && <ReadingBadge />}
+                        {isUnreadable(r) && <UnreadableBadge />}
                         {r.latest_version && <span>v{r.latest_version.version_number}</span>}
                         <span>Added {formatDate(r.created_at)}</span>
                       </p>
+                      {isReading(r) && <p className="mt-1.5 text-sm text-ink-muted">Scanned PDF. This usually takes under a minute, and you can leave this page.</p>}
+                      {isUnreadable(r) && <p className="mt-1.5 text-sm text-red-700">{processingMessage(r.processing)}</p>}
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <ButtonLink href={`/tailor/new?version=${r.latest_version?.id ?? ""}`} size="sm">
-                      Tailor
-                    </ButtonLink>
-                    <Button size="sm" variant="ghost" onClick={() => setVersionsFor((v) => (v === r.id ? null : r.id))} aria-expanded={versionsFor === r.id}>
-                      <History className="h-4 w-4" aria-hidden /> Versions
-                    </Button>
+                    {isUnreadable(r) && (
+                      <Button size="sm" onClick={() => void retryScan(r)} loading={retrying === r.id}>
+                        Try again
+                      </Button>
+                    )}
+                    {!isUnavailable(r) && (
+                      <>
+                        <ButtonLink href={`/tailor/new?version=${r.latest_version?.id ?? ""}`} size="sm">
+                          Tailor
+                        </ButtonLink>
+                        <Button size="sm" variant="ghost" onClick={() => setVersionsFor((v) => (v === r.id ? null : r.id))} aria-expanded={versionsFor === r.id}>
+                          <History className="h-4 w-4" aria-hidden /> Versions
+                        </Button>
+                      </>
+                    )}
                     <IconButton size="sm" label={`Rename ${r.name}`} onClick={() => setRenaming(r)}>
                       <Pencil className="h-4 w-4" aria-hidden />
                     </IconButton>
@@ -122,7 +174,7 @@ export function Resumes() {
                     </IconButton>
                   </div>
                 </div>
-                {versionsFor === r.id && (
+                {versionsFor === r.id && !isUnavailable(r) && (
                   <div className="border-t border-line px-4 py-2 sm:px-5">
                     <VersionList resumeId={r.id} onRestored={() => void reload()} />
                   </div>
@@ -135,6 +187,14 @@ export function Resumes() {
 
       <Dialog open={uploadOpen} onClose={() => setUploadOpen(false)} title="Upload a resume" size="lg">
         <ResumeUpload
+          onScanStarted={() => {
+            touchList();
+            void reload();
+          }}
+          onScanDiscarded={(id) => {
+            touchList();
+            setData((xs) => xs?.filter((x) => x.id !== id));
+          }}
           onUploaded={({ resume }) => {
             setUploadOpen(false);
             toast.success("Resume uploaded. Check what we extracted.");

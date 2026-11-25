@@ -21,6 +21,7 @@ import type {
   ChangeDecision,
   ResumeDetail,
   ResumeListItem,
+  ResumeUploadResult,
   ResumeVersion,
   ResumeWithVersion,
   ShareResult,
@@ -160,12 +161,14 @@ export const api = {
     const form = new FormData();
     form.append("file", file);
     form.append("name", name);
-    return request<ResumeWithVersion>("/resumes", { method: "POST", form });
+    return request<ResumeUploadResult>("/resumes", { method: "POST", form });
   },
   createFromText: (text: string, name: string) => request<ResumeWithVersion>("/resumes/text", { json: { text, name } }),
   createGuided: (body: GuidedResumeBody) => request<ResumeWithVersion>("/resumes/guided", { json: body }),
-  resume: (rid: string) => request<ResumeDetail>(`/resumes/${id(rid)}`),
+  resume: (rid: string, signal?: AbortSignal) => request<ResumeDetail>(`/resumes/${id(rid)}`, { signal }),
   renameResume: (rid: string, name: string) => request<ResumeDetail>(`/resumes/${id(rid)}`, { method: "PATCH", json: { name } }),
+  /** Retries reading a scanned PDF that failed. 202 with the resume back in `processing`; 409 if it cannot be retried. */
+  retryResumeProcessing: (rid: string) => request<ResumeDetail>(`/resumes/${id(rid)}/processing/retry`, { method: "POST" }),
   archiveResume: (rid: string) => request<void>(`/resumes/${id(rid)}`, { method: "DELETE" }),
   version: (rid: string, vid: string) => request<ResumeVersion>(`/resumes/${id(rid)}/versions/${id(vid)}`),
   restoreVersion: (rid: string, vid: string) =>

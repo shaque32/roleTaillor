@@ -7,6 +7,7 @@ import { api, ApiError } from "@/lib/api";
 import { useResource } from "@/lib/hooks";
 import type { BillingStatus, ResumeVersionSummary } from "@/lib/types";
 import { formatDate } from "@/lib/format";
+import { isReading, isUnavailable } from "@/lib/processing";
 import { Alert, Button, ButtonLink, ChoiceCards, Disclosure, Input, Select, Skeleton, Textarea } from "@/components/ui";
 import { ConsentDialog } from "@/components/ConsentDialog";
 import { PaymentDialog } from "./PaymentDialog";
@@ -52,7 +53,7 @@ export function TailorForm({ initialVersionId, defaultPageLimit = 2 }: { initial
 
   // Default selection: resume holding the initial version, else the first resume.
   useEffect(() => {
-    const list = resumes.data;
+    const list = resumes.data?.filter((r) => !isUnavailable(r));
     if (!list || resumeId) return;
     const match = initialVersionId ? list.find((r) => r.latest_version?.id === initialVersionId) : undefined;
     const first = match ?? list[0];
@@ -161,14 +162,21 @@ export function TailorForm({ initialVersionId, defaultPageLimit = 2 }: { initial
     );
   }
   if (resumes.error) return <Alert tone="error">{resumes.error.message}</Alert>;
-  const list = resumes.data ?? [];
+  // Scans still being read (or that could not be read) have no version to tailor yet.
+  const all = resumes.data ?? [];
+  const list = all.filter((r) => !isUnavailable(r));
   if (!list.length) {
+    const waiting = all.some(isReading);
     return (
       <div className="rounded-lg bg-surface-sunken px-5 py-6 text-center">
-        <h2 className="text-base font-semibold">Add a resume first</h2>
-        <p className="mt-1 text-sm text-ink-muted">Tailoring starts from a resume you already have, or one you build here.</p>
+        <h2 className="text-base font-semibold">{waiting ? "Your scan is still being read" : "Add a resume first"}</h2>
+        <p className="mt-1 text-sm text-ink-muted">
+          {waiting
+            ? "You can tailor it as soon as it's ready. Check your resumes in a minute."
+            : "Tailoring starts from a resume you already have, or one you build here."}
+        </p>
         <div className="mt-4 flex flex-wrap justify-center gap-2">
-          <ButtonLink href="/resumes">Upload a resume</ButtonLink>
+          <ButtonLink href="/resumes">{waiting ? "Go to resumes" : "Upload a resume"}</ButtonLink>
           <ButtonLink href="/resumes/new" variant="secondary">
             Build one
           </ButtonLink>

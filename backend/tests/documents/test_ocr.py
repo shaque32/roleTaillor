@@ -182,3 +182,53 @@ def test_plus_and_star_need_a_space_to_count_as_bullets():
 def test_ocr_budget_is_enforced(scanned_pdf):
     with pytest.raises(OcrError, match="budget"):
         ocr_pdf_pages(scanned_pdf, deadline=0)
+
+
+def test_ocr_disabled_never_touches_tesseract(monkeypatch):
+    from pypdf import PdfWriter
+
+    from roletailor.documents import ocr, read_pdf_text
+    from roletailor.documents.pdf import OcrOptions
+
+    def boom(*args, **kwargs):
+        raise AssertionError("Tesseract must not run")
+
+    monkeypatch.setattr(ocr, "ocr_pdf_pages", boom)
+    monkeypatch.setattr(ocr, "ocr_available", lambda: True)
+    writer = PdfWriter()
+    writer.add_blank_page(width=612, height=792)
+    out = BytesIO()
+    writer.write(out)
+    for option in (False, OcrOptions(enabled=False)):
+        doc = read_pdf_text(out.getvalue(), ocr=option)
+        assert doc.blocks == [] and [f["code"] for f in doc.findings] == ["scanned_pdf_needs_ocr"]
+        assert "ocr_outcome" not in doc.layout_metadata
+
+
+def test_ocr_options_reach_ocr_pdf_pages_and_errors_are_classified(monkeypatch):
+    from pypdf import PdfWriter
+
+    from roletailor.documents import ocr, read_pdf_text
+    from roletailor.documents.errors import OcrTimeout
+    from roletailor.documents.pdf import OcrOptions
+
+    seen = {}
+
+    def fake(data, **kwargs):
+        seen.update(kwargs)
+        raise seen["raises"]
+
+    monkeypatch.setattr(ocr, "ocr_pdf_pages", fake)
+    monkeypatch.setattr(ocr, "ocr_available", lambda: True)
+    writer = PdfWriter()
+    writer.add_blank_page(width=612, height=792)
+    out = BytesIO()
+    writer.write(out)
+    for error, expected in ((OcrTimeout("slow"), "timeout"), (OcrError("boom"), "failed"),
+                            (InvalidDocument("bad"), "failed")):
+        seen["raises"] = error
+        doc = read_pdf_text(out.getvalue(), ocr=OcrOptions(max_pages=3, deadline=9.0))
+        assert doc.layout_metadata["ocr_outcome"] == expected
+        assert seen["max_pages"] == 3 and seen["deadline"] == 9.0
+    monkeypatch.setattr(ocr, "ocr_available", lambda: False)
+    assert read_pdf_text(out.getvalue()).layout_metadata["ocr_outcome"] == "failed"

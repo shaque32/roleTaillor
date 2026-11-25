@@ -50,6 +50,7 @@ export function Onboarding() {
             </div>
             <ResumeUpload
               submitLabel="Upload and continue"
+              canLeave={false}
               onUploaded={({ version }) => {
                 setVersionId(version.id);
                 setStep("job");

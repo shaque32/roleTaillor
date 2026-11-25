@@ -1,10 +1,13 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FileUp } from "lucide-react";
 import { api } from "@/lib/api";
-import type { ResumeWithVersion } from "@/lib/types";
+import { useResumeProcessing } from "@/lib/hooks";
+import { latestVersionOf, processingMessage } from "@/lib/processing";
+import type { ResumeDetail, ResumeListItem, ResumeProcessing, ResumeWithVersion } from "@/lib/types";
 import { Alert, Button, Input, Textarea } from "@/components/ui";
+import { ReadingScan, UnreadableScan } from "@/components/ScanStatus";
 import { cx } from "@/lib/format";
 
 const ACCEPT = ".docx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -19,7 +22,108 @@ function validate(file: File): string | null {
   return null;
 }
 
-export function ResumeUpload({ onUploaded, submitLabel = "Upload resume" }: { onUploaded: (r: ResumeWithVersion) => void; submitLabel?: string }) {
+interface Scan {
+  resume: ResumeListItem | ResumeDetail;
+  processing: ResumeProcessing;
+  fileName: string;
+}
+
+/**
+ * A scanned PDF is read in the background. This takes the place of the dropzone while that happens: it polls the
+ * resume, then hands the finished version to `onUploaded`, exactly like a normal upload. Unmounting just stops polling.
+ */
+function ScanFlow({
+  scan,
+  canLeave,
+  onReady,
+  onFailedToOpen,
+  onDiscard,
+}: {
+  scan: Scan;
+  canLeave: boolean;
+  onReady: (r: ResumeWithVersion) => void;
+  onFailedToOpen: (message: string) => void;
+  onDiscard: (next: "file" | "text") => void;
+}) {
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const failedRef = useRef<HTMLDivElement>(null);
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+  const { processing, startedAt, retrying, retry, problem, gone } = useResumeProcessing(scan.resume.id, scan.processing, (detail) => {
+    const latest = latestVersionOf(detail);
+    const fail = () => onFailedToOpen("We read your scan but couldn't open it. You'll find it in your resumes.");
+    if (!latest) return fail();
+    api
+      .version(detail.id, latest.id)
+      .then((version) => alive.current && onReady({ resume: detail, version }))
+      .catch(() => alive.current && fail());
+  });
+
+  const state = gone ? "gone" : processing.status;
+  useEffect(() => {
+    (state === "processing" ? headingRef.current : failedRef.current)?.focus();
+  }, [state]);
+
+  if (state === "processing") {
+    return (
+      <ReadingScan
+        ref={headingRef}
+        fileName={scan.fileName}
+        startedAt={startedAt}
+        leaveHint={
+          canLeave
+            ? "You can close this window. We'll keep going and it will appear in your resumes when it's ready."
+            : "Please keep this page open. We'll move on as soon as it's ready."
+        }
+      />
+    );
+  }
+  const choose = (
+    <Button variant="secondary" onClick={() => onDiscard("file")}>
+      Choose another file
+    </Button>
+  );
+  return (
+    <div ref={failedRef} tabIndex={-1} className="focus:outline-none">
+      {state === "gone" ? (
+        <div className="space-y-4">
+          <Alert tone="warning">This scan was removed, so there is nothing to wait for.</Alert>
+          {choose}
+        </div>
+      ) : (
+        <UnreadableScan message={processingMessage(processing)} problem={problem} onRetry={() => void retry()} retrying={retrying}>
+          {choose}
+          <Button variant="secondary" onClick={() => onDiscard("text")}>
+            Paste text instead
+          </Button>
+        </UnreadableScan>
+      )}
+    </div>
+  );
+}
+
+export function ResumeUpload({
+  onUploaded,
+  onScanStarted,
+  onScanDiscarded,
+  canLeave = true,
+  submitLabel = "Upload resume",
+}: {
+  onUploaded: (r: ResumeWithVersion) => void;
+  /** Called when a scanned PDF was accepted and is being read in the background (the resume already exists). */
+  onScanStarted?: (resume: ResumeListItem | ResumeDetail) => void;
+  /** Called once a scan that could not be read has been removed, so a list showing it can drop the row. */
+  onScanDiscarded?: (resumeId: string) => void;
+  /** False when the caller cannot continue without the finished resume (changes the wording of the waiting state). */
+  canLeave?: boolean;
+  submitLabel?: string;
+}) {
+  const [scan, setScan] = useState<Scan | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [name, setName] = useState("");
@@ -67,7 +171,15 @@ export function ResumeUpload({ onUploaded, submitLabel = "Upload resume" }: { on
     setBusy(true);
     setError(null);
     try {
-      onUploaded(await api.uploadResume(file, name.trim() || file.name));
+      const r = await api.uploadResume(file, name.trim() || file.name);
+      if (r.version) {
+        onUploaded({ resume: r.resume, version: r.version });
+      } else if (r.resume.processing) {
+        setScan({ resume: r.resume, processing: r.resume.processing, fileName: file.name });
+        onScanStarted?.(r.resume);
+      } else {
+        setError("Upload failed.");
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed.");
     } finally {
@@ -97,6 +209,40 @@ export function ResumeUpload({ onUploaded, submitLabel = "Upload resume" }: { on
       ))}
     </div>
   );
+
+  /** Leave the scan screen. The unreadable resume is removed so it doesn't linger; if that fails it is harmless. */
+  function discardScan(next: "file" | "text") {
+    if (scan) {
+      const id = scan.resume.id;
+      void api.archiveResume(id).then(
+        () => onScanDiscarded?.(id),
+        () => undefined, // still listed, where it can be removed by hand
+      );
+    }
+    setScan(null);
+    setFile(null);
+    setName("");
+    setError(null);
+    setMode(next);
+  }
+
+  if (scan) {
+    return (
+      <ScanFlow
+        key={scan.resume.id}
+        scan={scan}
+        canLeave={canLeave}
+        onReady={onUploaded}
+        onFailedToOpen={(message) => {
+          setScan(null);
+          setFile(null);
+          setName("");
+          setError(message);
+        }}
+        onDiscard={discardScan}
+      />
+    );
+  }
 
   if (mode === "text") {
     return (
