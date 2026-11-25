@@ -92,6 +92,15 @@ class JobAnalysis(BaseModel):
 # --------------------------------------------------------------------------
 
 
+class TermEvidence(BaseModel):
+    """The planner's claim that words in the resume show the work a job term names.
+    `resume_quote` must occur verbatim in the resume; code checks that, and the claim
+    verifier checks that the quote really means the term."""
+
+    job_term: str
+    resume_quote: str
+
+
 class BlockPlan(BaseModel):
     block_id: str
     action: Literal["rewrite", "keep"] = "rewrite"
@@ -100,6 +109,8 @@ class BlockPlan(BaseModel):
     target_keywords: list[str] = Field(default_factory=list)
     evidence: str = ""
     instruction: str = ""
+    # Job terms the block may use although it never spells them, each backed by a quote.
+    term_evidence: list[TermEvidence] = Field(default_factory=list)
 
 
 class TailoringPlan(BaseModel):
@@ -115,6 +126,13 @@ class BlockRewrite(BaseModel):
     new_text: str
     reason: str = ""
     keywords_used: list[str] = Field(default_factory=list)
+
+
+class SummaryDraft(BaseModel):
+    """Output of the summary stage: the new summary and the job terms it names."""
+    new_text: str
+    terms_used: list[str] = Field(default_factory=list)
+    reason: str = ""
 
 
 class RewriteBatch(BaseModel):
@@ -177,6 +195,9 @@ class Change(BaseModel):
     proposed_text: str
     reason: str
     prioritized_keywords: list[str] = Field(default_factory=list)
+    # For acceptance analysis: the kind of block, and which stage wrote the edit.
+    scope: Literal["summary", "bullet", "skills"] | None = None
+    source_stage: Literal["summary", "rewrite"] | None = None
 
 
 class TailoringResult(BaseModel):
@@ -192,3 +213,15 @@ class TailoringResult(BaseModel):
     scores_after: Scores
     feedback: HiringManagerFeedback | None = None
     total_cost_usd: float = 0.0
+
+
+class ClaimVerdict(BaseModel):
+    block_id: str
+    supported: bool
+    unsupported_claims: list[str] = Field(default_factory=list)
+
+
+class ClaimCheck(BaseModel):
+    """Output of the verify_claims stage: is each rewrite entailed by the original?"""
+
+    results: list[ClaimVerdict] = Field(default_factory=list)

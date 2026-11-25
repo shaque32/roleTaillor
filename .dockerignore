@@ -1,0 +1,14 @@
+# Build context for backend/Dockerfile (repo root). Keep it small and secret-free.
+.git
+.env
+.env.*
+!.env.example
+.data
+**/.venv
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.ruff_cache
+frontend
+evals/reports
+*.rdb

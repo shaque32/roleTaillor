@@ -41,7 +41,7 @@ class Block(BaseModel):
 
 
 class ParsedDocument(BaseModel):
-    source_format: Literal["docx", "pdf", "guided"]
+    source_format: Literal["docx", "pdf", "guided", "text"]
     blocks: list[Block]
     # Page size, margins, default fonts, section count. Stored in
     # resume_versions.layout_metadata.
@@ -49,8 +49,9 @@ class ParsedDocument(BaseModel):
     # Human-readable findings for resume_versions.extraction_findings, e.g.
     # {"code": "missing_section", "detail": "No education section found"}.
     findings: list[dict] = Field(default_factory=list)
-    # True when the engine can rewrite blocks in place (DOCX). PDF uploads are
-    # re-rendered through a template instead.
+    # True when the engine can attempt to rewrite blocks in place: DOCX, and PDFs with a text
+    # layer (`edit_pdf_in_place`; it may still raise `PdfInPlaceUnsupported` for a given edit
+    # and the caller then re-renders through a template). False for scanned PDFs.
     supports_in_place_edit: bool = True
 
     def block(self, block_id: str) -> Block:

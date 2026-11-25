@@ -1,0 +1,51 @@
+name: sales_account_executive_metric_heavy
+family: sales
+seniority: mid
+scenario: metric_heavy
+resume:
+  layout: classic
+  name: Jamal Whitfield
+  contact: Atlanta, GA | jamal.w@example.com | (404) 555-0121
+  summary: >-
+    Account executive with six years of SaaS sales experience closing mid-market deals and consistently exceeding quota.
+  experience:
+    - company: Relaypoint Software
+      title: Account Executive, Mid-Market
+      dates: Jan 2022 – Present
+      bullets:
+        - Closed $2.4M in new ARR in 2024, reaching 128% of a $1.875M quota and ranking 2nd of 14 reps.
+        - Grew average deal size from $38K to $52K by selling multi-year contracts and a second product line.
+        - Maintained a 31% win rate on 140 qualified opportunities and a 74-day average sales cycle.
+        - Built a pipeline of 3.5x coverage each quarter using outbound sequences and partner referrals.
+        - Reduced discounting from 18% to 11% by anchoring on ROI and security reviews.
+    - company: Stackhouse Cloud
+      title: Sales Development Representative, then Account Executive
+      dates: Aug 2018 – Dec 2021
+      bullets:
+        - Booked 45 qualified meetings a month as an SDR, 20% above target, and was promoted in 14 months.
+        - Closed $1.1M in new business as an AE in 2021 at 104% of quota.
+        - Won the 2021 President's Club award for top new-logo bookings in the region.
+  skills:
+    - {label: "Sales:", value: "prospecting, discovery, negotiation, forecasting, multi-threading, contract negotiation"}
+    - {label: "Tools:", value: "Salesforce, LinkedIn Sales Navigator, Excel, DocuSign"}
+  education:
+    - {school: Georgia State University, degree: B.B.A. Marketing, year: "2018"}
+job: |
+  Enterprise Account Executive
+  Sell our platform to Fortune 1000 buyers with complex, multi-stakeholder buying committees.
+  Responsibilities:
+  - Own a $2.5M annual quota and a named account list
+  - Run full-cycle enterprise deals from first call to signature
+  - Forecast accurately in Salesforce each week
+  - Navigate legal, procurement, and security reviews
+  Requirements:
+  - 5+ years of quantitative SaaS sales, with 2+ years selling to enterprise
+  - Consistent quota attainment above 100%
+  - Experience with MEDDPICC or the Challenger Sale
+  - Familiarity with Gong, Outreach, and Clari
+canaries: [MEDDPICC, Challenger Sale, Gong, Outreach, Clari]
+expect:
+  min_changes: 0
+  live_min_changes: 1
+  live_expected_gaps: [MEDDPICC, Gong]
+notes: Every quota, percent, and dollar figure must survive unchanged; a good tailoring lifts full-cycle, forecasting, and procurement language without altering numbers or claiming enterprise methodologies.

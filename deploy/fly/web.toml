@@ -1,0 +1,35 @@
+# Fly.io config for the RoleTailor Next.js frontend.
+# deploy.sh overrides `app` with --app and builds frontend/Dockerfile with frontend/ as context.
+app = "roletailor-web"
+primary_region = "iad"
+
+[build]
+  dockerfile = "../../frontend/Dockerfile"
+
+# API_BASE_URL (public API URL ending in /v1) comes from env/*.web.env.
+[env]
+  COOKIE_SECURE = "true"
+  PORT = "3000"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 100
+    hard_limit = 200
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/api/session"
+    grace_period = "15s"
+    interval = "30s"
+    timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

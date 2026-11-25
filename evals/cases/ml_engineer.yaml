@@ -1,0 +1,20 @@
+name: ml_engineer_strong_match
+family: data_ai
+seniority: senior
+scenario: strong_match
+resume: classic
+page_limit: 2
+job: |
+  Senior Machine Learning Engineer, Fraud Platform
+  We are hiring a senior ML engineer to own real-time fraud models end to end.
+  Requirements:
+  - 5+ years building machine learning systems in production with Python and SQL
+  - Stream processing with Kafka and Spark; orchestration with Airflow
+  - MLOps: model registry, CI/CD, monitoring (MLflow or similar)
+  - Kubernetes and Docker on AWS
+  - Experience with A/B testing and model fairness
+  Nice to have: Snowflake, Terraform, mentoring engineers.
+# Terms the resume does not evidence. They must never appear in the output.
+canaries: [Snowflake]
+expect:
+  min_changes: 1

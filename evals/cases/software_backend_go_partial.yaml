@@ -1,0 +1,46 @@
+name: software_backend_go_partial
+family: software
+seniority: mid
+scenario: partial_match
+resume:
+  layout: classic
+  name: Tomasz Wieczorek
+  contact: Denver, CO | tomasz.w@example.com | (720) 555-0182 | github.com/twieczorek-example
+  summary: >-
+    Backend engineer with five years of experience building payment and billing services
+    in Go and Python, with a focus on reliability and clear APIs.
+  experience:
+    - company: Ledgerline
+      title: Software Engineer II
+      dates: Apr 2022 – Present
+      bullets:
+        - Built an idempotent payments API in Go handling 2,400 requests per second at peak.
+        - Moved invoice generation from cron scripts to a Postgres-backed job queue, cutting failed runs by 70%.
+        - Added structured logging and Prometheus metrics to six services and wrote the on-call runbook.
+    - company: Brightcart
+      title: Software Engineer
+      dates: Jun 2019 – Mar 2022
+      bullets:
+        - Maintained a Django checkout service and its REST endpoints used by the mobile apps.
+        - Wrote integration tests that raised coverage of the order module from 41% to 78%.
+  skills:
+    - {label: "Languages:", value: "Go, Python, SQL"}
+    - {label: "Platform:", value: "Postgres, Redis, Docker, Prometheus, GitHub Actions"}
+  education:
+    - {school: University of Colorado Boulder, degree: B.S. Computer Science, year: "2019"}
+job: |
+  Senior Backend Engineer, Platform
+  You will design and run the services behind our merchant platform.
+  Requirements:
+  - 5+ years building backend services in Go or Java
+  - PostgreSQL and Redis in production
+  - Kubernetes and Terraform on GCP
+  - gRPC service design and event streaming with Kafka
+  - CI/CD with GitHub Actions
+  Nice to have: experience with PCI DSS.
+canaries: [Kubernetes, Terraform, GCP, gRPC, Kafka, Java, PCI DSS]
+expect:
+  min_changes: 0
+  live_min_changes: 1
+  live_expected_gaps: [Kubernetes, Kafka]
+notes: Postgres -> PostgreSQL is a fair alignment; Kubernetes, Kafka, and gRPC are honest gaps.

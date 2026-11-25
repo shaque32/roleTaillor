@@ -1,0 +1,60 @@
+name: data_ai_analytics_engineer_strong
+family: data_ai
+seniority: senior
+scenario: strong_match
+resume:
+  layout: classic
+  name: Priya Raghunathan
+  contact: Austin, TX | priya.r@example.com | (512) 555-0147
+  summary: >-
+    Analytics engineer with seven years of experience turning raw event and billing data into
+    tested, documented dbt models and trusted Looker dashboards for product and finance teams.
+  experience:
+    - company: Northwind Telehealth
+      title: Senior Analytics Engineer
+      dates: Mar 2022 – Present
+      bullets:
+        - Rebuilt the core dbt project of 340 models on BigQuery, cutting nightly build time from 95 to 38 minutes.
+        - Added schema and freshness tests to every source table, catching 60+ upstream breaks before they reached dashboards.
+        - Designed a semantic layer in Looker used by 120 weekly active business users across five teams.
+        - Mentored three analysts on dbt style, code review, and incremental model design.
+    - company: Cobalt Retail Group
+      title: Analytics Engineer
+      dates: Jul 2019 – Feb 2022
+      bullets:
+        - Migrated 80 legacy SQL reports from a Postgres warehouse to BigQuery with side-by-side reconciliation.
+        - Built customer lifetime value and cohort retention models that finance adopted for quarterly planning.
+        - Wrote the team's data modeling guide covering naming, grain, and slowly changing dimensions.
+    - company: Harbor Point Analytics
+      title: Data Analyst
+      dates: Jun 2017 – Jun 2019
+      bullets:
+        - Automated weekly KPI reporting in SQL and Python, saving the ops team about 12 hours a week.
+        - Partnered with marketing to define attribution metrics and document them in a shared glossary.
+  skills:
+    - {label: "Transformation:", value: "dbt, SQL, Python, Jinja"}
+    - {label: "Warehouse and BI:", value: "BigQuery, Postgres, Looker, Looker Studio"}
+    - {label: "Practices:", value: "data modeling, testing, documentation, code review, Git"}
+  education:
+    - {school: University of Texas at Austin, degree: B.S. Statistics, year: "2017"}
+job: |
+  Senior Analytics Engineer, Growth Data
+  Join a small data team that owns the models behind every metric at a fast-growing consumer app.
+  What you will do:
+  - Own our dbt project and keep it fast, tested, and documented
+  - Model event data in BigQuery for product, marketing, and finance
+  - Maintain the Looker semantic layer and partner with analysts on self-serve analytics
+  - Write clear data modeling standards and review teammates' pull requests
+  Requirements:
+  - 5+ years in analytics engineering or data analytics
+  - Strong SQL, dbt, and BigQuery
+  - Experience with PostgreSQL as a source system
+  - Orchestration with Airflow
+  - Familiarity with Fivetran for ingestion
+  Nice to have: Monte Carlo or similar data observability tools, Snowflake.
+canaries: [Airflow, Fivetran, Monte Carlo, Snowflake]
+expect:
+  min_changes: 0
+  live_min_changes: 1
+  live_expected_gaps: [Airflow, Fivetran]
+notes: Postgres -> PostgreSQL is a fair alignment and dbt/BigQuery/Looker already match; Airflow and Fivetran are honest gaps and must not be added.

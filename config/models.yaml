@@ -1,0 +1,91 @@
+# Model routing for the tailoring pipeline.
+#
+# Change models, tiers, prices, and per-stage routing here, not in code.
+# Prices are USD per million tokens. Verify against each provider's pricing page
+# before relying on cost reports; the DeepSeek numbers in particular change often.
+
+models:
+  claude-haiku:
+    provider: anthropic
+    model: claude-haiku-5-5
+    revision: "5.5"
+    tier: low
+    effort: low
+    price: {input: 0.10, output: 0.50, cache_read: 0.01, cache_write: 0.125}
+  deepseek-chat:
+    provider: deepseek
+    model: deepseek-chat
+    revision: "v3"
+    tier: low
+    price: {input: 0.28, output: 0.42, cache_read: 0.028, cache_write: 0.28}
+  claude-sonnet:
+    provider: anthropic
+    model: claude-sonnet-5-5
+    revision: "5.5"
+    tier: medium
+    effort: low
+    price: {input: 2.00, output: 10.00, cache_read: 0.10, cache_write: 2.50}
+  deepseek-reasoner:
+    provider: deepseek
+    model: deepseek-reasoner
+    revision: "r"
+    tier: medium
+    price: {input: 0.28, output: 0.42, cache_read: 0.028, cache_write: 0.28}
+  claude-opus:
+    provider: anthropic
+    model: claude-opus-5-5
+    revision: "5.5"
+    tier: high
+    effort: medium
+    price: {input: 4.00, output: 20.00, cache_read: 0.20, cache_write: 5.00}
+
+# Ordered failover within each tier. The first healthy model wins.
+tiers:
+  low: [claude-haiku, deepseek-chat]
+  medium: [claude-sonnet, deepseek-reasoner]
+  high: [claude-opus]
+
+# Each stage starts at a tier and may escalate one tier at a time.
+stages:
+  structure_resume: {tier: low, max_tokens: 8000, max_tier: medium}
+  analyze_job:      {tier: low, max_tokens: 4000, max_tier: medium}
+  plan:             {tier: medium, max_tokens: 8000, max_tier: high}
+  # The summary is the block a recruiter reads first. It gets its own call on the mid
+  # tier (about $0.007 a run); bullets stay on the low tier. Remove this stage and the
+  # summary goes back to the bullet writer.
+  summary:          {tier: medium, max_tokens: 1500, max_tier: medium}
+  rewrite:          {tier: low, max_tokens: 6000, max_tier: medium}
+  verify_claims:    {tier: low, max_tokens: 4000, max_tier: medium}
+  feedback:         {tier: low, max_tokens: 3000, max_tier: medium}
+
+# Customer tiers that start specific stages higher ("premium optimization").
+customer_tier_boost:
+  enterprise: {plan: 1, rewrite: 1}
+
+routing:
+  # Schema-invalid output is retried once on the same model with the error fed back,
+  # then moves to the next model in the tier.
+  attempts_per_model: 2
+  circuit_breaker: {failures: 3, window_seconds: 60, cooldown_seconds: 120}
+  request_timeout_seconds: 45
+  rewrite_batch_size: 8
+  rewrite_concurrency: 4
+  # Rewrite attempts per block: 2 = one retry with the gate's reasons, then keep the
+  # original. A third round escalates a tier; live evals showed it firing on 83% of runs
+  # and adding about 10 seconds for little recovered.
+  rewrite_max_rounds: 2
+  # Re-plan one tier higher when the planner reports confidence below 0.6. Off: in the
+  # first live eval this fired on 40% of runs (Sonnet to Opus), tripling plan cost with
+  # no measured quality gain. Turn on only with a live eval that shows it pays.
+  plan_escalate_on_low_confidence: false
+
+# Pin prompt versions per environment. Unpinned prompts use the highest version.
+# Rollback = pin the previous version and redeploy (or reload).
+prompt_pins:
+  prod: {}
+  staging: {}
+  dev: {}
+
+providers:
+  anthropic: {api_key_env: ANTHROPIC_API_KEY}
+  deepseek: {api_key_env: DEEPSEEK_API_KEY, base_url: "https://api.deepseek.com"}

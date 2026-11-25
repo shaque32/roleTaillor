@@ -1,0 +1,13 @@
+name: table_layout_ml
+family: data_ai
+seniority: mid
+scenario: layout
+resume: table
+page_limit: 2
+job: |
+  Machine Learning Engineer
+  Requirements: Python, PyTorch, machine learning, MLOps, Docker, Kubernetes, AWS, A/B testing.
+  Preferred: LLM fine-tuning, RAG, vector databases such as pgvector or Pinecone.
+canaries: [Pinecone]
+expect:
+  min_changes: 0

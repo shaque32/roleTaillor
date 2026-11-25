@@ -1,0 +1,20 @@
+# Private Redis for Celery broker, rate limits and LLM cache. Reachable only over Fly's
+# private network at <app>.internal:6379. No [http_service] / [[services]] on purpose.
+# Needs secret REDIS_PASSWORD and volume redis_data (bootstrap.sh creates both).
+app = "roletailor-redis"
+primary_region = "iad"
+
+[build]
+  image = "redis:7-alpine"
+
+[processes]
+  app = "sh -c 'exec redis-server --requirepass \"$REDIS_PASSWORD\" --appendonly yes --dir /data'"
+
+[[mounts]]
+  source = "redis_data"
+  destination = "/data"
+  processes = ["app"]
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
