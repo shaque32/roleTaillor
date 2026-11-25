@@ -1,19 +1,16 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, Pause, Play, X } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { isActive } from "@/lib/format";
 import type { WorkflowDetail } from "@/lib/types";
-import { Alert, Button, ButtonLink, PageHeader, SkeletonRows, StatusBadge, useToast } from "@/components/ui";
+import { Alert, Badge, Button, ButtonLink, Dialog, PageHeader, SkeletonRows, StatusBadge, TabPanel, Tabs, useToast } from "@/components/ui";
 import { Progress } from "./Progress";
-import { ScoresPanel } from "./ScoresPanel";
 import { SimulationPanel } from "./SimulationPanel";
 import { GapsPanel } from "./GapsPanel";
 import { ChangeReview } from "./ChangeReview";
-import { ExportBar } from "./ExportBar";
+import { ResultSummary } from "./ResultSummary";
 
 const POLL_MS = 2000;
 
@@ -25,6 +22,9 @@ export function Review() {
   const [startedAt] = useState(() => Date.now());
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [pollKey, setPollKey] = useState(0);
+  const [tab, setTab] = useState("changes");
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const scrolled = useRef(false);
 
   const load = useCallback(
     async (signal?: AbortSignal) => {
@@ -65,6 +65,14 @@ export function Review() {
     };
   }, [load, pollKey]);
 
+  // The dashboard links to #iterate: scroll to the rewrite block once the result is on screen.
+  const hasLatest = Boolean(detail?.latest);
+  useEffect(() => {
+    if (!hasLatest || scrolled.current || window.location.hash !== "#iterate") return;
+    scrolled.current = true;
+    requestAnimationFrame(() => document.getElementById("iterate")?.scrollIntoView({ block: "start" }));
+  }, [hasLatest]);
+
   const restartPolling = () => setPollKey((k) => k + 1);
 
   async function control(action: "pause" | "resume" | "cancel") {
@@ -77,117 +85,194 @@ export function Review() {
     }
   }
 
-  if (!detail && !error) return <SkeletonRows rows={6} />;
+  if (!detail && !error) return <SkeletonRows rows={4} />;
   if (!detail) return <Alert tone="error">{error?.message}</Alert>;
 
   const { workflow, latest } = detail;
   const role = workflow.target_role ?? "Tailored resume";
   const hasResult = Boolean(latest);
+  const active = isActive(workflow.status);
 
   return (
     <>
-      <Link href="/dashboard" className="mb-4 inline-flex items-center gap-1 text-sm text-ink-muted hover:text-ink">
-        <ArrowLeft className="h-4 w-4" aria-hidden /> Dashboard
-      </Link>
       <PageHeader
+        back={{ href: "/dashboard", label: "Tailored resumes" }}
         title={workflow.company ? `${role} · ${workflow.company}` : role}
-        description={
-          <span className="inline-flex items-center gap-2">
-            <StatusBadge status={workflow.status} />
-            {latest && <span>Iteration {latest.iteration}</span>}
-            {latest?.approved_at && <span className="text-emerald-700">Approved</span>}
-          </span>
-        }
-        actions={
+        meta={
           <>
-            {isActive(workflow.status) && (
-              <>
-                <Button variant="ghost" size="sm" onClick={() => control("pause")}>
-                  <Pause className="h-4 w-4" aria-hidden /> Pause
-                </Button>
-                <Button variant="ghost" size="sm" onClick={() => control("cancel")}>
-                  <X className="h-4 w-4" aria-hidden /> Cancel
-                </Button>
-              </>
-            )}
-            {workflow.status === "paused" && (
-              <Button variant="secondary" size="sm" onClick={() => control("resume")}>
-                <Play className="h-4 w-4" aria-hidden /> Resume
-              </Button>
-            )}
+            <StatusBadge status={workflow.status} />
+            {latest && <span className="text-sm text-ink-muted">Version {latest.iteration}</span>}
+            {latest?.approved_at && <Badge tone="green">Approved</Badge>}
           </>
         }
       />
 
-      {error && <Alert tone="warning" className="mb-6">Connection hiccup: {error.message} We&apos;ll keep trying.</Alert>}
+      {error && (
+        <Alert tone="warning" className="mb-6">
+          Connection hiccup: {error.message} We&apos;ll keep trying.
+        </Alert>
+      )}
 
-      {isActive(workflow.status) && <Progress status={workflow.status} stage={workflow.stage} startedAt={startedAt} iterating={hasResult} />}
+      {active && (
+        <Progress
+          status={workflow.status}
+          stage={workflow.stage}
+          startedAt={startedAt}
+          iterating={hasResult}
+          compact={hasResult}
+          onPause={() => control("pause")}
+          onCancel={() => setConfirmCancel(true)}
+        />
+      )}
+
+      {workflow.status === "paused" && (
+        <Alert
+          tone="warning"
+          title="Paused"
+          className="mb-8"
+          action={
+            <Button size="sm" onClick={() => control("resume")}>
+              Resume
+            </Button>
+          }
+        >
+          Nothing is running right now. Resume when you&apos;re ready.
+        </Alert>
+      )}
 
       {workflow.status === "failed" && (
-        <Alert tone="error" title="This tailoring didn't finish" className="mb-8">
-          <p>
-            {workflow.recovery_message ??
-              workflow.error?.message ??
-              "Something went wrong while tailoring. Nothing was charged; failed generations never count against your credits."}
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {hasResult ? (
-              <Button
-                size="sm"
-                onClick={async () => {
-                  try {
-                    await api.iterate(id, {});
-                    restartPolling();
-                  } catch (e) {
-                    toast.error(e);
-                  }
-                }}
-              >
-                Retry
-              </Button>
-            ) : (
-              <ButtonLink size="sm" href={`/tailor/new${workflow.source_resume_version_id ? `?version=${workflow.source_resume_version_id}` : ""}`}>
-                Try again
+        <Alert
+          tone="error"
+          title="This tailoring didn't finish"
+          className="mb-8"
+          action={
+            <div className="flex flex-wrap gap-2">
+              {hasResult ? (
+                <Button
+                  size="sm"
+                  onClick={async () => {
+                    try {
+                      await api.iterate(id, {});
+                      restartPolling();
+                    } catch (e) {
+                      toast.error(e);
+                    }
+                  }}
+                >
+                  Retry
+                </Button>
+              ) : (
+                <ButtonLink size="sm" href={`/tailor/new${workflow.source_resume_version_id ? `?version=${workflow.source_resume_version_id}` : ""}`}>
+                  Try again
+                </ButtonLink>
+              )}
+              <ButtonLink size="sm" variant="secondary" href="/dashboard">
+                Back to tailored resumes
               </ButtonLink>
-            )}
-            <ButtonLink size="sm" variant="secondary" href="/dashboard">
-              Back to dashboard
-            </ButtonLink>
-          </div>
+            </div>
+          }
+        >
+          {workflow.recovery_message ??
+            workflow.error?.message ??
+            "Something went wrong while tailoring. Nothing was charged; failed generations never count against your credits."}
         </Alert>
       )}
 
       {workflow.status === "cancelled" && !hasResult && (
-        <Alert tone="info" className="mb-8">
-          This tailoring was cancelled.{" "}
-          <Link href="/tailor/new" className="underline">
-            Start a new one
-          </Link>
-          .
+        <Alert
+          tone="info"
+          className="mb-8"
+          action={
+            <ButtonLink size="sm" variant="secondary" href="/tailor/new">
+              Start a new one
+            </ButtonLink>
+          }
+        >
+          This tailoring was cancelled.
         </Alert>
       )}
 
       {latest && (
-        <div className="space-y-10">
-          <ExportBar generated={latest} onApproved={(g) => setDetail((d) => (d?.latest ? { ...d, latest: { ...d.latest, ...g } } : d))} />
-          <div className="grid gap-6 lg:grid-cols-2">
-            <ScoresPanel before={detail.scores_before} latest={latest} />
-            <SimulationPanel feedback={detail.feedback ?? latest.simulated_feedback ?? null} score={latest.simulation_score} />
-          </div>
-          <GapsPanel gaps={detail.gaps} />
-          <ChangeReview
-            workflowId={id}
-            generatedId={latest.id}
-            changes={detail.changes}
-            busy={isActive(workflow.status)}
-            onChange={(update) => setDetail((d) => (d ? { ...d, changes: update(d.changes) } : d))}
-            onIterationStarted={() => {
-              setDetail((d) => (d ? { ...d, workflow: { ...d.workflow, status: "queued" } } : d));
-              restartPolling();
-            }}
+        <div className="space-y-8">
+          <ResultSummary
+            generated={latest}
+            before={detail.scores_before}
+            onApproved={(g) => setDetail((d) => (d?.latest && d.latest.id === g.id ? { ...d, latest: { ...d.latest, ...g } } : d))}
           />
+          <div>
+            <Tabs
+              aria-label="Result details"
+              value={tab}
+              onChange={setTab}
+              tabs={[
+                {
+                  id: "changes",
+                  label: "Changes",
+                  count: detail.changes.length,
+                },
+                {
+                  id: "gaps",
+                  label: "Missing keywords",
+                  count: detail.gaps.length,
+                },
+                { id: "feedback", label: "Hiring-manager view" },
+              ]}
+            />
+            <div className="pt-6">
+              <TabPanel id="changes" active={tab === "changes"}>
+                <ChangeReview
+                  workflowId={id}
+                  generatedId={latest.id}
+                  changes={detail.changes}
+                  busy={active}
+                  onChange={(update) => setDetail((d) => (d ? { ...d, changes: update(d.changes) } : d))}
+                  onIterationStarted={() => {
+                    setDetail((d) =>
+                      d
+                        ? {
+                            ...d,
+                            workflow: { ...d.workflow, status: "queued" },
+                          }
+                        : d,
+                    );
+                    restartPolling();
+                  }}
+                />
+              </TabPanel>
+              <TabPanel id="gaps" active={tab === "gaps"}>
+                <GapsPanel gaps={detail.gaps} />
+              </TabPanel>
+              <TabPanel id="feedback" active={tab === "feedback"}>
+                <SimulationPanel feedback={detail.feedback ?? latest.simulated_feedback ?? null} score={latest.simulation_score} />
+              </TabPanel>
+            </div>
+          </div>
         </div>
       )}
+
+      <Dialog
+        open={confirmCancel}
+        onClose={() => setConfirmCancel(false)}
+        size="sm"
+        title="Stop this tailoring?"
+        description="Nothing is charged for a cancelled run."
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setConfirmCancel(false)}>
+              Keep going
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => {
+                setConfirmCancel(false);
+                void control("cancel");
+              }}
+            >
+              Stop
+            </Button>
+          </>
+        }
+      />
     </>
   );
 }

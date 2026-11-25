@@ -8,9 +8,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# LibreOffice (headless Writer) converts DOCX to PDF for exports.
+# LibreOffice (headless Writer) converts DOCX to PDF for exports; Tesseract OCRs scanned PDF resumes.
+# Carlito, Caladea and Liberation are metric-compatible stand-ins for Calibri, Cambria, Arial and
+# Times when an in-place PDF edit needs a glyph the embedded font subset lacks (found via fc-match).
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libreoffice-writer-nogui fonts-dejavu-core fonts-liberation \
+        fonts-crosextra-carlito fonts-crosextra-caladea fontconfig \
+        tesseract-ocr tesseract-ocr-eng \
     && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd --system --gid 1001 app && useradd --system --uid 1001 --gid app --create-home app

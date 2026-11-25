@@ -82,6 +82,30 @@ The schema's RLS is kept as designed: the app connects as a non-BYPASSRLS role a
 ## MVP vs later
 | MVP (this slice) | Phase 2 | Enterprise |
 |---|---|---|
-| DOCX in-place tailoring, PDF upload via template re-render, guided builder | OCR for scanned PDFs, embeddings for semantic match (pgvector), semantic cache | SSO/SAML, tenant AI policies and prompt packs |
+| DOCX and text-PDF in-place tailoring, OCR for scanned PDFs (template output), guided builder | Reflow that moves later lines when an edit needs an extra line, embeddings for semantic match (pgvector), semantic cache | SSO/SAML, tenant AI policies and prompt packs |
 | Staged pipeline, gates, evals, cost telemetry | Batch API for non-urgent re-scoring, A/B of prompt versions | Private model deployments, CMEK |
 | Auth, RLS, billing, exports, share links | Cover letters, interview prep | ATS/CRM/HRIS integrations, audit exports |
+
+## PDF sources
+
+Text PDFs are edited in place (`documents/pdf_layout.py`, `pdf_writer.py`): the reader groups
+glyphs into lines and blocks with their geometry and fonts; the writer removes the old text
+operators from the content stream (no white boxes, so ATS parsers never see stale text) and
+draws the new text at the same position in the stream, on the same baselines, in the original
+font. When the embedded font subset lacks a glyph, a metric-compatible open font is embedded
+(Carlito for Calibri, Caladea for Cambria, Liberation for Arial/Times/Courier). Every output is
+re-read and compared with the intended text before it is accepted.
+
+An edit that cannot keep the layout (needs more lines than it had even at 90% size, spans two
+columns of a line, changes a bold label, sits in a form XObject) is handled in the pipeline
+step `layout.pdf_in_place`: a minority of such edits is reverted so the layout holds; if more
+than half would be lost, all edits are kept and the result is rendered through the ATS
+template. Generated versions record `content.render = {mode, fallback_reason}`.
+
+Scanned PDFs (no text layer) are read with Tesseract through `documents/ocr.py` (about 2 s per
+page, at most 6 pages). They carry the findings `ocr_applied` and, under 70% confidence,
+`ocr_low_confidence`, and are always rendered through the template.
+
+Licensing: the PDF stack is pdfplumber/pdfminer.six (MIT), pikepdf (MPL-2.0), fontTools (MIT),
+reportlab (BSD), pypdfium2 (Apache-2.0/BSD) and Tesseract (Apache-2.0). PyMuPDF and Ghostscript
+(both AGPL) are deliberately not used.

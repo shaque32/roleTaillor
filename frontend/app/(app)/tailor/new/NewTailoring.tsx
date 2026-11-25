@@ -11,9 +11,9 @@ export function NewTailoring() {
   const me = useResource(() => api.me());
   return (
     <div className="mx-auto max-w-2xl">
-      <PageHeader title="New tailoring" description="Pick a resume, add the job, and we'll prepare a tailored version for your review." />
+      <PageHeader title="New tailoring" description="Tell us the job. We'll tailor your resume and show you every change." />
       <Card>
-        <CardBody className="py-6">
+        <CardBody className="p-6 sm:p-8">
           {me.loading ? (
             <Skeleton className="h-64 w-full" />
           ) : (

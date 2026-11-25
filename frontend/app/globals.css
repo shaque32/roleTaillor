@@ -7,7 +7,16 @@
 }
 
 body {
-  @apply bg-slate-50 text-ink antialiased;
+  @apply bg-surface-page text-ink antialiased;
+}
+
+@layer base {
+  ::selection {
+    background: #dbe6fe;
+  }
+  input[type="date"] {
+    min-height: 3rem;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
