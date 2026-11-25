@@ -9,6 +9,8 @@ primary_region = "iad"
 # API_BASE_URL (public API URL ending in /v1) comes from env/*.web.env.
 [env]
   COOKIE_SECURE = "true"
+  # Browser address relayed to the API for rate limiting, with the API_PROXY_SECRET secret.
+  CLIENT_IP_HEADER = "fly-client-ip"
   PORT = "3000"
 
 [http_service]

@@ -77,6 +77,16 @@ else
   printf 'RT_SECRET_KEY=%s\n' "$(openssl rand -hex 32)" | flyctl secrets import --stage --app "$API"
 fi
 
+# Lets the API believe the browser address the web app relays (per-visitor rate limits).
+if flyctl secrets list --app "$API" 2>/dev/null | grep -q 'RT_PROXY_SHARED_SECRET'; then
+  echo "RT_PROXY_SHARED_SECRET already set (to rotate: set it on $API and API_PROXY_SECRET on $WEB to one new value)"
+else
+  PROXY_SECRET="$(openssl rand -hex 32)"
+  printf 'RT_PROXY_SHARED_SECRET=%s\n' "$PROXY_SECRET" | flyctl secrets import --stage --app "$API"
+  printf 'API_PROXY_SECRET=%s\n' "$PROXY_SECRET" | flyctl secrets import --stage --app "$WEB"
+  PROXY_SECRET=""
+fi
+
 step "7/7 Provider and billing secrets (blank = skip; input hidden)"
 for name in ANTHROPIC_API_KEY DEEPSEEK_API_KEY RT_STRIPE_SECRET_KEY RT_STRIPE_WEBHOOK_SECRET RT_STRIPE_SUBSCRIPTION_PRICE_ID; do
   read -r -s -p "$name: " value || value=""

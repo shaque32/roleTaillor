@@ -1,5 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { SESSION_COOKIE, apiBaseUrl, errorResponse, isSameOrigin } from "@/lib/server-config";
+import {
+  SESSION_COOKIE,
+  apiBaseUrl,
+  clientAddressHeaders,
+  errorResponse,
+  isSameOrigin,
+  readBodyLimited,
+} from "@/lib/server-config";
 import { clearSessionCookie, setSessionCookie } from "@/lib/session-cookie";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +26,9 @@ export async function POST(req: NextRequest) {
 
   let payload: Record<string, unknown>;
   try {
-    payload = (await req.json()) as Record<string, unknown>;
+    const raw = await readBodyLimited(req, 16 * 1024);
+    if (raw === null) return errorResponse(413, "payload_too_large", "That request is too large.");
+    payload = JSON.parse(new TextDecoder().decode(raw)) as Record<string, unknown>;
   } catch {
     return errorResponse(400, "invalid_body", "Expected a JSON body.");
   }
@@ -33,7 +42,7 @@ export async function POST(req: NextRequest) {
   try {
     upstream = await fetch(`${apiBaseUrl()}/auth/${action}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Correlation-ID": correlationId },
+      headers: { "Content-Type": "application/json", "X-Correlation-ID": correlationId, ...clientAddressHeaders(req) },
       body: JSON.stringify(body),
       cache: "no-store",
     });

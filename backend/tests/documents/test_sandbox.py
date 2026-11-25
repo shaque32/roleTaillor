@@ -12,7 +12,7 @@ from tests.fixtures import make_classic_resume
 
 from .pdf_helpers import helvetica_pdf
 
-LIMITS = {"timeout": 60, "memory_mb": 1536, "cpu_seconds": 30, "max_pages": 20, "max_blocks": 3000}
+LIMITS = {"timeout": 60, "memory_mb": 768, "cpu_seconds": 30, "max_pages": 20, "max_blocks": 3000}
 
 
 def _docx_with_document(xml: bytes) -> bytes:

@@ -87,7 +87,7 @@ class Settings(BaseSettings):
     metrics_token: str = ""
     # Document parsing runs in a child process with these limits.
     parse_timeout_seconds: float = 75.0
-    parse_memory_limit_mb: int = 1536
+    parse_memory_limit_mb: int = 768
     parse_cpu_seconds: int = 60
     max_resume_pdf_pages: int = 20
     max_resume_blocks: int = 3000
