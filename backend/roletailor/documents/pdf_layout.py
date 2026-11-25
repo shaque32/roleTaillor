@@ -30,11 +30,17 @@ FRAGMENT_GAP = 1.5
 PARAGRAPH_GAP = 2.3
 # Approximate descent below the baseline, in ems, used to derive a line's vertical extent.
 _DESCENT = 0.27
+# A column's fragments start within this many points of each other, on at least this many rows,
+# and (unlike right-aligned dates) end at varying x.
+COLUMN_X_TOL = 1.5
+COLUMN_MIN_ROWS = 4
+COLUMN_MIN_X1_SPREAD = 3.0
 # A line at least this fraction of the page's longest line is treated as wrapped prose.
 _FULL_LINE_RATIO = 0.8
 _CONTINUATION_ENDINGS = (",", ";", "-", "–", "/", "&", "(")
 _SENTENCE_ENDINGS = (".", "!", "?", ":")
 # A short "Label:" opener ("Languages: Python, SQL") starts its own item, never a wrap.
+_ENDS_WITH_YEAR = re.compile(r"(?:\d{4}|[Pp]resent|[Nn]ow)$")
 _LABEL_LINE = re.compile(r"^[A-Z][\w&/+.\- ]{0,28}:\s")
 
 # (font name, size, fill colour) of a run of glyphs.
@@ -88,6 +94,13 @@ class Line:
     bullet_x0: float | None = None
     bullet_x1: float | None = None
     bullet_style: Style | None = None
+    # Horizontal extent of the column flow the line belongs to (None: the page's own margins).
+    limit_left: float | None = None
+    limit_right: float | None = None
+
+    @property
+    def flow(self) -> tuple[float | None, float | None]:
+        return (self.limit_left, self.limit_right)
 
     @property
     def body(self) -> str:
@@ -191,7 +204,9 @@ def merge_lines(lines: list[Line]) -> list[list[Line]]:
     merged: list[list[Line]] = []
     previous: Line | None = None
     for line in lines:
-        if previous is not None and _gap_ems(previous, line) > PARAGRAPH_GAP:
+        if previous is not None and (
+                _gap_ems(previous, line) > PARAGRAPH_GAP or previous.flow != line.flow
+                or line.baseline > previous.baseline + 0.5 * line.size):  # another column, or back up the page
             previous = None
         if previous is not None and merged and not looks_like_heading(
                 _joined(merged[-1]), all_bold=False) and continues(previous.text, line.text, full_width):
@@ -222,8 +237,134 @@ def _page_lines(page_index: int, chars: list[dict]) -> list[Line]:
             rows[-1].append(glyph)
         else:
             rows.append([glyph])
-    lines = [_build_line(page_index, sorted(row, key=lambda g: g.x0)) for row in rows]
-    return [line for line in lines if line is not None]
+    rows = [sorted(row, key=lambda g: g.x0) for row in rows]
+    spans = _column_spans(rows)
+    if not spans:
+        return [line for line in (_build_line(page_index, row) for row in rows) if line is not None]
+    return _column_lines(page_index, rows, spans)
+
+
+# --- column flows --------------------------------------------------------------------------------
+
+
+def _gap_groups(row: list[_Glyph]) -> list[list[_Glyph]]:
+    """Split a row at large gaps; a lone bullet glyph stays with the text it introduces."""
+    groups: list[list[_Glyph]] = [[row[0]]]
+    for previous, glyph in zip(row, row[1:], strict=False):
+        if glyph.x0 - previous.x1 > FRAGMENT_GAP * max(previous.style[1], glyph.style[1]):
+            groups.append([glyph])
+        else:
+            groups[-1].append(glyph)
+    merged: list[list[_Glyph]] = []
+    for group in groups:
+        if merged and len(merged[-1]) == 1 and merged[-1][0].text in BULLET_CHARS:
+            merged[-1].extend(group)
+        else:
+            merged.append(group)
+    return merged
+
+
+def _column_spans(rows: list[list[_Glyph]]) -> list[tuple[float, int, int]]:
+    """Detected column starts as (x, first row, last row), rows being indexes into `rows`.
+
+    A column's fragments start at one x on several rows and end at varying x; right-aligned dates
+    also share a start only by accident but always share their right edge, so they never qualify.
+    """
+    candidates: list[tuple[float, float, int]] = []  # (x0, x1, row) of every non-first fragment
+    for index, row in enumerate(rows):
+        for group in _gap_groups(row)[1:]:
+            candidates.append((group[0].x0, group[-1].x1, index))
+    candidates.sort()
+    spans: list[tuple[float, int, int]] = []
+    cluster: list[tuple[float, float, int]] = []
+    for candidate in [*candidates, None]:
+        if cluster and (candidate is None or candidate[0] - cluster[0][0] > COLUMN_X_TOL):
+            members = {row for _, _, row in cluster}
+            x1s = [x1 for _, x1, _ in cluster]
+            if len(members) >= COLUMN_MIN_ROWS and max(x1s) - min(x1s) > COLUMN_MIN_X1_SPREAD \
+                    and not _is_label_table(rows, members):
+                start = min(x0 for x0, _, _ in cluster)
+                spans.append((start, *_extend(rows, start, min(members), max(members))))
+            cluster = []
+        if candidate is not None:
+            cluster.append(candidate)
+    return spans
+
+
+def _is_label_table(rows: list[list[_Glyph]], members: set[int]) -> bool:
+    """Whether the rows pair a label or date with its value ("Languages:   Python, SQL",
+    "2019 - 2021   Acme"). Such rows read across, so they must stay one line each."""
+    lefts = ["".join(g.text for g in _gap_groups(rows[index])[0]).strip() for index in members]
+    paired = sum(1 for text in lefts if text.endswith(":") or _ENDS_WITH_YEAR.search(text))
+    return 2 * paired >= len(lefts)
+
+
+def _extend(rows: list[list[_Glyph]], start: float, top: int, bottom: int) -> tuple[int, int]:
+    """Grow a column's row range over adjacent rows that lie wholly at or after the column start."""
+    def at_start(index: int) -> bool:
+        return abs(rows[index][0].x0 - start) <= COLUMN_X_TOL
+
+    while top > 0 and at_start(top - 1):
+        top -= 1
+    while bottom + 1 < len(rows) and at_start(bottom + 1):
+        bottom += 1
+    return top, bottom
+
+
+def _column_lines(page_index: int, rows: list[list[_Glyph]], spans: list[tuple[float, int, int]]) -> list[Line]:
+    """Lines in reading order: rows outside a column band as usual; inside, one flow after the other."""
+    spans = sorted(spans)
+    starts = [x for x, _, _ in spans]
+    bands: list[list[int]] = []  # [first row, last row] of every run of overlapping column spans
+    for _, first, last in sorted(spans, key=lambda span: span[1]):
+        if bands and first <= bands[-1][1] + 1:
+            bands[-1][1] = max(bands[-1][1], last)
+        else:
+            bands.append([first, last])
+
+    def flow_of(glyph: _Glyph, index: int) -> int:
+        return sum(1 for x, first, last in spans if first <= index <= last and glyph.x0 >= x - COLUMN_X_TOL)
+
+    lines: list[Line] = []
+    row_index = 0
+    for first, last in bands:
+        for index in range(row_index, first):
+            lines.extend(_row_lines(page_index, rows[index], [0] * len(rows[index])))
+        pieces: list[tuple[int, Line]] = []
+        for index in range(first, last + 1):
+            flows = [flow_of(g, index) for g in rows[index]]
+            pieces.extend(_row_pieces(page_index, rows[index], flows))
+        lines.extend(_with_limits(pieces, starts))
+        row_index = last + 1
+    for index in range(row_index, len(rows)):
+        lines.extend(_row_lines(page_index, rows[index], [0] * len(rows[index])))
+    return lines
+
+
+def _row_pieces(page_index: int, row: list[_Glyph], flows: list[int]) -> list[tuple[int, Line]]:
+    pieces: list[tuple[int, Line]] = []
+    for flow in sorted(set(flows)):
+        line = _build_line(page_index, [g for g, f in zip(row, flows, strict=True) if f == flow])
+        if line is not None:
+            pieces.append((flow, line))
+    return pieces
+
+
+def _row_lines(page_index: int, row: list[_Glyph], flows: list[int]) -> list[Line]:
+    return [line for _, line in _row_pieces(page_index, row, flows)]
+
+
+def _with_limits(pieces: list[tuple[int, Line]], starts: list[float]) -> list[Line]:
+    """Order a band's pieces flow by flow and tell each its column's horizontal limits."""
+    right: dict[int, float] = {}
+    for flow, line in pieces:
+        right[flow] = max(right.get(flow, line.x1), line.x1)
+    last = max(right)
+    ordered = sorted(enumerate(pieces), key=lambda item: (item[1][0], item[0]))
+    return [
+        replace(line, limit_left=starts[flow - 1] if flow else None, limit_right=right[flow] if flow < last else None)
+        for _, (flow, line) in ordered
+    ]
 
 
 def _glyphs(chars: list[dict]) -> list[_Glyph]:

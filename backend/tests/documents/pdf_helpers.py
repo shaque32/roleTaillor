@@ -8,6 +8,7 @@ from io import BytesIO
 from pathlib import Path
 
 import numpy as np
+import pikepdf
 import pypdfium2 as pdfium
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfbase import pdfmetrics
@@ -123,3 +124,96 @@ def ttf_embedded_pdf(path: Path) -> bytes:
     c.drawString(72, 684, "Built an internal developer portal.")
     c.save()
     return buf.getvalue()
+
+
+LEFT_BULLETS = [
+    "Cut nightly batch runtime by 70 percent.",
+    "Mentored four engineers on the data team.",
+    "Built a feature store serving 120 models daily.",
+    "Led migration of 300 DAGs to Airflow 2.",
+    "Reduced cloud spend by 31 percent in a year.",
+    "Wrote the on-call runbook for pipelines.",
+]
+RIGHT_BULLETS = [
+    "Shipped a payments ledger, exactly-once.",
+    "Owned p99 latency for checkout.",
+    "Introduced contract tests across services.",
+    "Hired and onboarded six backend engineers.",
+    "Drove the PCI audit to a clean result.",
+    "Rewrote the retry policy for webhooks.",
+]
+
+
+def two_column_pdf() -> bytes:
+    """A full-width heading, two bullet columns sharing baselines (gutter wider than 1.5 em), a full-width footer."""
+    buf = BytesIO()
+    c = canvas.Canvas(buf, pagesize=letter)
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(72, 730, "EXPERIENCE")
+    c.setFont("Helvetica", 10)
+    y = 700
+    for left, right in zip(LEFT_BULLETS, RIGHT_BULLETS, strict=True):
+        c.drawString(72, y, "-")
+        c.drawString(84, y, left)
+        c.drawString(330, y, "-")
+        c.drawString(342, y, right)
+        y -= 18
+    c.drawString(72, y - 10, "Languages: English, Hindi")
+    c.save()
+    return buf.getvalue()
+
+
+def title_date_rows_pdf() -> bytes:
+    """Five job-title rows, each with a right-aligned date of identical width: dates are not columns."""
+    buf = BytesIO()
+    c = canvas.Canvas(buf, pagesize=letter)
+    c.setFont("Helvetica", 10)
+    for n, title in enumerate(["Acme - Engineer", "Globex - Lead", "Initech - Developer", "Umbrella - Architect",
+                               "Hooli - Manager"]):
+        c.drawString(72, 700 - 30 * n, title)
+        c.drawRightString(540, 700 - 30 * n, "2020 - 2023")
+    c.save()
+    return buf.getvalue()
+
+
+def one_text_object_pdf() -> bytes:
+    """Several paragraphs inside a single BT...ET, using text lines, relative moves and a leading."""
+    buf = BytesIO()
+    c = canvas.Canvas(buf, pagesize=letter)
+    text = c.beginText(72, 720)
+    text.setFont("Helvetica", 10.5)
+    text.setLeading(18)
+    text.textLine("First paragraph about platform work.")
+    text.textLine("Second paragraph about mentoring.")
+    text.moveCursor(0, 6)
+    text.textLine("Third paragraph about reliability.")
+    text.textOut("Fourth paragraph ")
+    text.textOut("ends mid-line.")
+    text.textLine("")
+    text.textLine("Fifth paragraph closes the page.")
+    c.drawText(text)
+    c.save()
+    return buf.getvalue()
+
+
+def font_dictionary(spec: dict) -> pikepdf.Dictionary:
+    """A font dictionary from a plain dict; strings starting with `/` become names."""
+    return pikepdf.Dictionary({
+        key: pikepdf.Name(value) if isinstance(value, str) and value.startswith("/") else value
+        for key, value in spec.items()})
+
+
+def raw_pdf(content: str, font: dict | None = None, extra_fonts: dict[str, dict] | None = None) -> bytes:
+    """One page whose content stream is `content`; `/F1` is Helvetica (WinAnsi) unless `font` replaces it."""
+    pdf = pikepdf.Pdf.new()
+    pdf.add_blank_page(page_size=(612, 792))
+    fonts = {"/F1": font or {"/Type": "/Font", "/Subtype": "/Type1", "/BaseFont": "/Helvetica",
+                             "/Encoding": "/WinAnsiEncoding"}}
+    fonts.update(extra_fonts or {})
+    page = pdf.pages[0].obj
+    page.Resources = pikepdf.Dictionary(Font=pikepdf.Dictionary(
+        {name: pdf.make_indirect(font_dictionary(spec)) for name, spec in fonts.items()}))
+    page.Contents = pdf.make_stream(content.encode("latin-1"))
+    out = BytesIO()
+    pdf.save(out)
+    return out.getvalue()

@@ -71,6 +71,9 @@ def test_pipeline_reverts_a_minority_of_edits_to_keep_the_layout():
 def test_pipeline_keeps_content_when_most_edits_would_be_lost():
     edits, outcome = _fit_pdf_layout(CHROME_PDF, TOO_LONG)
     assert edits == TOO_LONG and outcome.details["mode"] == "template"
+    # Nothing was reverted, so the score stays at 100; the misfits explain the template.
+    assert outcome.details["reverted"] == {} and outcome.score == 100.0
+    assert list(outcome.details["unfit"]) == ["l10"]
 
 
 def test_render_primary_keeps_pdf_layout():
@@ -96,3 +99,10 @@ def test_pdf_without_in_place_support_uses_template():
 @pytest.mark.parametrize("data", [b"not a pdf", b""])
 def test_pdf_addresses_blocks_rejects_unreadable(data):
     assert not rendering.pdf_addresses_blocks(data, [])
+
+
+def test_ocr_source_reports_why_the_template_is_used():
+    document = read_pdf_text(CHROME_PDF).model_copy(update={"layout_metadata": {"ocr": True}})
+    base = rendering.Base(version={"content": {}}, document=document, docx=None, pdf=None)
+    out = rendering.render_primary(base, FITS, None)
+    assert out.mode == "template" and "OCR" in out.fallback_reason

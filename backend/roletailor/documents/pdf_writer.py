@@ -24,7 +24,7 @@ import pikepdf
 
 from .errors import InvalidDocument, PdfInPlaceUnsupported
 from .model import EditRejected
-from .pdf_content import ShowEvent, invert, removal_replacement, walk
+from .pdf_content import ShowEvent, SplitState, WalkResult, invert, removal_replacement, walk
 from .pdf_fonts import (
     FontCodec,
     PdfFont,
@@ -149,6 +149,12 @@ class _Document:
         """Left and right edge of the page's text column (the right edge is at least the mirrored left margin)."""
         return self._bounds[page]
 
+    def edges(self, line: Line) -> tuple[float, float]:
+        """Left and right edge of the text column the line sits in (a column flow's own limits, if it has any)."""
+        left, right = self.bounds(line.page)
+        return (left if line.limit_left is None else line.limit_left,
+                right if line.limit_right is None else line.limit_right)
+
     def page_fonts(self, page: int) -> list[tuple[str, PdfFont]]:
         if page not in self._fonts:
             fonts = _resources(self.pdf.pages[page]).get("/Font")
@@ -218,16 +224,19 @@ def edit_pdf_in_place(
         pdf = pikepdf.open(BytesIO(data))
     except pikepdf.PdfError as exc:
         raise InvalidDocument(f"not a readable PDF: {exc}") from exc
-    with pdf:
-        doc = _Document(pdf, paragraphs, font_overrides)
-        plans = [_plan_block(doc, by_id[bid], text) for bid, text in effective.items()]
-        _embed_substitutes(doc, plans)
-        for page in sorted({p.page for p in plans}):
-            _rewrite_page(doc, page, [p for p in plans if p.page == page])
-        out = BytesIO()
-        pdf.save(out, deterministic_id=True)
-    result = out.getvalue()
-    _verify(paragraphs, effective, result, len(pdf.pages))
+    try:
+        with pdf:
+            doc = _Document(pdf, paragraphs, font_overrides)
+            plans = [_plan_block(doc, by_id[bid], text) for bid, text in effective.items()]
+            _embed_substitutes(doc, plans)
+            for page in sorted({p.page for p in plans}):
+                _rewrite_page(doc, page, [p for p in plans if p.page == page])
+            out = BytesIO()
+            pdf.save(out, deterministic_id=True)
+        result = out.getvalue()
+        _verify(paragraphs, effective, result, len(pdf.pages))
+    except (ValueError, KeyError, pikepdf.PdfError) as exc:  # nothing may bypass the caller's fallback
+        raise PdfInPlaceUnsupported(f"unexpected failure while editing the PDF: {exc}") from exc
     return result, PdfEditReport(tuple(p.report for p in plans))
 
 
@@ -281,7 +290,7 @@ def _anchor(x0: float, x1: float, left: float, right: float, has_bullet: bool) -
 def _plan_reflow(doc: _Document, par: Paragraph, new_text: str) -> _Plan:
     lines = par.lines
     first = lines[0]
-    left, right = doc.bounds(first.page)
+    left, right = doc.edges(first)
     anchor = "left"
     if len(lines) == 1:
         anchor = _anchor(first.x0, first.x1, left, right, first.bullet is not None)
@@ -353,8 +362,8 @@ def _wrap(codec: FontCodec, words: list[str], size: float, avail: list[float]) -
                 break
             current = candidate
             index += 1
-        if not current:
-            return None  # a single word is wider than the slot
+        if not current or not codec.can_encode(current):
+            return None  # a single word is wider than the slot, or the font cannot draw the line
         lines.append(current)
         if index == len(words):
             return lines
@@ -396,7 +405,7 @@ def _plan_fragment(doc: _Document, par: Paragraph, new_text: str) -> _Plan:
     font_name, size, color = run.style
     font = doc.font_for(line.page, font_name, tail, par.id)
 
-    left, right = doc.bounds(line.page)
+    left, right = doc.edges(line)
     index = line.fragments.index(fragment)
     fits_left = line.fragments[index + 1].x0 - _FRAGMENT_MARGIN * size if index + 1 < len(line.fragments) else None
     anchor = "left"
@@ -475,12 +484,30 @@ def _rewrite_page(doc: _Document, page_index: int, plans: list[_Plan]) -> None:
                        if str(getattr(instructions[i], "operator", "")) == "ET"), None)
         if anchor is None or anchor not in result.ctm_at_et:
             raise PdfInPlaceUnsupported("text object of the block is not closed", plan.block_id)
-        inserts.setdefault(anchor, []).extend(_draw_ops(plan, result.ctm_at_et[anchor]))
+        last = max(i for i in removed if i < anchor)
+        if any(not s.in_form and last < s.index < anchor and s.index not in removals for s in result.shows):
+            # Later text of the same text object survives: draw the new text between it and the old.
+            inserts.setdefault(last, []).extend(_split_ops(plan, result, last))
+        else:
+            inserts.setdefault(anchor, []).extend(_draw_ops(plan, result.ctm_at_et[anchor]))
     rebuilt: list = []
     for index, instruction in enumerate(instructions):
         rebuilt.extend(removals.get(index, [instruction]))
         rebuilt.extend(inserts.get(index, []))
     page.obj.Contents = doc.pdf.make_stream(pikepdf.unparse_content_stream(rebuilt))
+
+
+def _split_ops(plan: _Plan, result: WalkResult, at: int) -> list[pikepdf.ContentStreamInstruction]:
+    """`ET`, the replacement, then `BT` and the text matrices of the original stream right after `at`."""
+    state: SplitState | None = result.splits.get(at)
+    if state is None or not state.balanced or state.clipping:
+        raise PdfInPlaceUnsupported("cannot split the text object around the block's text", plan.block_id)
+    if state.dx and (not state.dx_known or not state.unit):
+        raise PdfInPlaceUnsupported("cannot restore the text position after the block's text", plan.block_id)
+    ops = [_ins("ET"), *_draw_ops(plan, state.ctm), _ins("BT"), _ins("Tm", *(round(v, 6) for v in state.tlm))]
+    if state.dx:
+        ops.append(_ins("TJ", pikepdf.Array([round(-state.dx / state.unit * 1000, 6)])))
+    return ops
 
 
 def _match_event(event: ShowEvent, plans: list[_Plan], removals: dict[int, list]) -> None:
@@ -495,6 +522,10 @@ def _match_event(event: ShowEvent, plans: list[_Plan], removals: dict[int, list]
                 raise PdfInPlaceUnsupported("the block's text is inside a Form XObject", plan.block_id)
             if event.advance is None:
                 raise PdfInPlaceUnsupported("the font of the block's text cannot be measured", plan.block_id)
+            if event.rise:
+                raise PdfInPlaceUnsupported("the block's text is raised or lowered (text rise)", plan.block_id)
+            if event.render_mode:
+                raise PdfInPlaceUnsupported("the block's text is not plainly filled (render mode)", plan.block_id)
             target.removed.append(event.index)
             target.shared_bullet |= verdict == "bullet"
             hit = True

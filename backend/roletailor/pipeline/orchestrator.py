@@ -221,11 +221,12 @@ def _fit_pdf_layout(source_pdf: bytes, edits: dict[str, str]) -> tuple[dict[str,
     (overflow, missing glyphs, mixed styles). The page count can never change in place.
     If more than half the edits would be lost, keep them all; rendering then uses the
     template, which is recorded on the generated version."""
-    def outcome(mode: str, reverted: dict[str, str]) -> ValidationOutcome:
+    def outcome(mode: str, reverted: dict[str, str], unfit: dict[str, str]) -> ValidationOutcome:
+        # `reverted` lists only edits actually removed; `unfit` explains a template choice.
         return ValidationOutcome(
             rule_key="layout.pdf_in_place", rule_version=RULE_VERSION, passed=True,
             score=round(100.0 * (1 - len(reverted) / len(edits)), 1),
-            details={"mode": mode, "reverted": reverted})
+            details={"mode": mode, "reverted": reverted, "unfit": unfit})
 
     try:
         from roletailor.documents import fit_pdf_edits
@@ -237,8 +238,8 @@ def _fit_pdf_layout(source_pdf: bytes, edits: dict[str, str]) -> tuple[dict[str,
             rule_key="layout.pdf_in_place", rule_version=RULE_VERSION, passed=True,
             details={"skipped": str(e)[:200]})
     if len(dropped) > PDF_FIT_MAX_DROP_RATIO * len(edits):
-        return edits, outcome("template", dropped)
-    return kept, outcome("in_place", dropped)
+        return edits, outcome("template", {}, dropped)
+    return kept, outcome("in_place", dropped, {})
 
 
 def _enforce_page_limit(source_docx: bytes, edits: dict[str, str], document: ParsedDocument,

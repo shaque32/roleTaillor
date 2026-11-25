@@ -57,6 +57,21 @@ class ShowEvent:
     unit: float  # font size * horizontal scale, converts `advance` to TJ thousandths
     in_form: bool
     operands: tuple
+    rise: float = 0.0  # Ts in effect for this show
+    render_mode: int = 0  # Tr in effect for this show
+
+
+@dataclass(frozen=True)
+class SplitState:
+    """Text state right after a show operator: what is needed to close and re-open its text object."""
+
+    ctm: Matrix
+    tlm: Matrix  # text line matrix
+    dx: float  # text-space distance the text matrix has moved from the line matrix along x
+    dx_known: bool  # False if an unmeasurable show happened since the line matrix was set
+    unit: float  # font size * horizontal scale
+    balanced: bool  # no marked-content sequence opened inside this text object is still open
+    clipping: bool  # a clipping render mode was used in this text object
 
 
 @dataclass
@@ -67,11 +82,14 @@ class _TextState:
     word_space: float = 0.0
     h_scale: float = 1.0
     leading: float = 0.0
+    rise: float = 0.0
+    render_mode: int = 0
 
 
 @dataclass
 class WalkResult:
     shows: list[ShowEvent] = field(default_factory=list)
+    splits: dict[int, SplitState] = field(default_factory=dict)  # by show instruction index (page level)
     ctm_at_et: dict[int, Matrix] = field(default_factory=dict)
 
 
@@ -93,16 +111,32 @@ def _run(
     stack: list[tuple[Matrix, _TextState]] = []
     state = _TextState()
     tm = tlm = IDENTITY
+    dx, dx_known = 0.0, True  # tm's x offset from tlm
+    mc_depth = bt_depth = 0
+    clipping = False
+
+    def set_line(matrix: Matrix) -> None:
+        nonlocal tm, tlm, dx, dx_known
+        tm = tlm = matrix
+        dx, dx_known = 0.0, True
 
     def show(index: int, operator: str, operands: tuple, strings: list) -> None:
-        nonlocal tm
+        nonlocal tm, dx, dx_known, clipping
         advance = _advance(strings, state)
         start = multiply(tm, ctm)
         end = multiply(translation(advance or 0.0, 0.0), multiply(tm, ctm))
         result.shows.append(ShowEvent(
             index=index, operator=operator, start_x=start[4], start_y=start[5], end_x=end[4],
-            advance=advance, unit=state.size * state.h_scale, in_form=in_form, operands=operands))
+            advance=advance, unit=state.size * state.h_scale, in_form=in_form, operands=operands,
+            rise=state.rise, render_mode=state.render_mode))
         tm = multiply(translation(advance or 0.0, 0.0), tm)
+        dx += advance or 0.0
+        dx_known &= advance is not None
+        clipping |= state.render_mode >= 4
+        if not in_form:
+            result.splits[index] = SplitState(
+                ctm=ctm, tlm=tlm, dx=dx, dx_known=dx_known, unit=state.size * state.h_scale,
+                balanced=mc_depth == bt_depth, clipping=clipping)
 
     for index, ins in enumerate(instructions):
         if not isinstance(ins, pikepdf.ContentStreamInstruction):
@@ -116,7 +150,12 @@ def _run(
             elif op == "cm":
                 ctm = multiply(tuple(_num(a) for a in args), ctm)  # type: ignore[arg-type]
             elif op == "BT":
-                tm = tlm = IDENTITY
+                set_line(IDENTITY)
+                bt_depth, clipping = mc_depth, False
+            elif op in ("BMC", "BDC"):
+                mc_depth += 1
+            elif op == "EMC":
+                mc_depth -= 1
             elif op == "ET":
                 if not in_form:
                     result.ctm_at_et[index] = ctm
@@ -131,14 +170,18 @@ def _run(
                 state.h_scale = _num(args[0]) / 100
             elif op == "TL":
                 state.leading = _num(args[0])
+            elif op == "Ts":
+                state.rise = _num(args[0])
+            elif op == "Tr":
+                state.render_mode = int(_num(args[0]))
             elif op in ("Td", "TD"):
                 if op == "TD":
                     state.leading = -_num(args[1])
-                tm = tlm = multiply(translation(_num(args[0]), _num(args[1])), tlm)
+                set_line(multiply(translation(_num(args[0]), _num(args[1])), tlm))
             elif op == "Tm":
-                tm = tlm = tuple(_num(a) for a in args)  # type: ignore[assignment]
+                set_line(tuple(_num(a) for a in args))  # type: ignore[arg-type]
             elif op == "T*":
-                tm = tlm = multiply(translation(0.0, -state.leading), tlm)
+                set_line(multiply(translation(0.0, -state.leading), tlm))
             elif op == "Tj":
                 show(index, op, tuple(args), [bytes(args[0])])
             elif op == "TJ":
@@ -146,7 +189,7 @@ def _run(
             elif op in ("'", '"'):
                 if op == '"':
                     state.word_space, state.char_space = _num(args[0]), _num(args[1])
-                tm = tlm = multiply(translation(0.0, -state.leading), tlm)
+                set_line(multiply(translation(0.0, -state.leading), tlm))
                 show(index, op, tuple(args), [bytes(args[-1])])
             elif op == "Do" and depth < _MAX_FORM_DEPTH:
                 _enter_form(resources, str(args[0]), ctm, result, depth, font_cache)
@@ -161,13 +204,13 @@ def _font(resources: pikepdf.Dictionary | None, name: str, cache: dict) -> PdfFo
     obj = fonts[name]
     key = obj.objgen if obj.is_indirect else id(obj)
     if key not in cache:
-        cache[key] = load_pdf_font(obj)
-    return cache[key]
+        cache[key] = (obj, load_pdf_font(obj))  # keeping `obj` alive keeps its id() unique
+    return cache[key][1]
 
 
 def _advance(strings: list, state: _TextState) -> float | None:
     """Text-space distance the text matrix moves after showing `strings`, or None if unmeasurable."""
-    if state.font is None:
+    if state.font is None or state.font.vertical:
         return None
     total = 0.0
     for item in strings:

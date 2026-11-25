@@ -66,7 +66,8 @@ class PdfFont:
     text_to_code: dict[str, int]
     widths: dict[int, float]
     default_width: float
-    reusable: bool = True  # False for CMaps we do not understand (only used to measure advances)
+    reusable: bool = True  # False for CMaps/encodings we do not understand (only used to measure advances)
+    vertical: bool = False  # Identity-V: advances run down the page, so no horizontal advance is measurable
     _longest: int = field(default=1, repr=False)
 
     def __post_init__(self) -> None:
@@ -163,13 +164,14 @@ def _invert(code_to_text: dict[int, str]) -> dict[str, int]:
 def _load_type0(font: pikepdf.Dictionary) -> PdfFont:
     descendant = font.DescendantFonts[0]
     encoding = font.get("/Encoding")
-    identity = isinstance(encoding, pikepdf.Name) and str(encoding) in ("/Identity-H", "/Identity-V")
+    vertical = isinstance(encoding, pikepdf.Name) and str(encoding) == "/Identity-V"
+    identity = isinstance(encoding, pikepdf.Name) and str(encoding) == "/Identity-H"
     code_to_text = _to_unicode_map(font)
     return PdfFont(
         base_name=strip_subset_prefix(str(font.get("/BaseFont", ""))), two_byte=True,
         code_to_text=code_to_text, text_to_code=_invert(code_to_text),
         widths=_cid_widths(descendant.get("/W")), default_width=float(descendant.get("/DW", 1000)),
-        reusable=identity and bool(code_to_text))
+        reusable=identity and bool(code_to_text), vertical=vertical)
 
 
 def _cid_widths(array: pikepdf.Array | None) -> dict[int, float]:
@@ -196,22 +198,45 @@ def _load_simple(font: pikepdf.Dictionary) -> PdfFont:
     descriptor = font.get("/FontDescriptor")
     embedded = descriptor is not None and any(key in descriptor for key in _EMBEDDED_KEYS)
     code_to_text = _to_unicode_map(font)
+    reusable = True
     if not code_to_text and not embedded:
-        code_to_text = _winansi_map(font.get("/Encoding"))
+        declared = _declared_map(font.get("/Encoding"))
+        if declared is None:
+            reusable = False  # an encoding we cannot reproduce: measure with it, never draw with it
+        else:
+            code_to_text = declared
     return PdfFont(
         base_name=base, two_byte=False, code_to_text=code_to_text, text_to_code=_invert(code_to_text),
         widths=_simple_widths(font, base, code_to_text),
-        default_width=float(descriptor.get("/MissingWidth", 0)) if descriptor is not None else 0.0)
+        default_width=float(descriptor.get("/MissingWidth", 0)) if descriptor is not None else 0.0,
+        reusable=reusable)
 
 
-def _winansi_map(encoding: object) -> dict[int, str]:
-    """Code -> text for a non-embedded font: WinAnsi plus any /Differences."""
+_BASE_CODECS = {"/WinAnsiEncoding": "cp1252", "/MacRomanEncoding": "mac_roman"}
+
+
+def _codec_map(codec: str) -> dict[int, str]:
     mapping: dict[int, str] = {}
     for code in range(32, 256):
         try:
-            mapping[code] = bytes([code]).decode("cp1252")
+            mapping[code] = bytes([code]).decode(codec)
         except UnicodeDecodeError:
             continue
+    return mapping
+
+
+def _declared_map(encoding: object) -> dict[int, str] | None:
+    """Code -> text for a non-embedded font from its /Encoding (WinAnsi when absent), or None if unknown."""
+    base: object = encoding
+    if isinstance(encoding, pikepdf.Dictionary):
+        base = encoding.get("/BaseEncoding")
+    if base is None:
+        codec = "cp1252"
+    elif isinstance(base, pikepdf.Name) and str(base) in _BASE_CODECS:
+        codec = _BASE_CODECS[str(base)]
+    else:
+        return None
+    mapping = _codec_map(codec)
     if isinstance(encoding, pikepdf.Dictionary) and "/Differences" in encoding:
         code = 0
         for item in encoding.Differences:

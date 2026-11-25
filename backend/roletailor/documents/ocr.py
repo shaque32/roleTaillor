@@ -8,11 +8,13 @@ parsed here, so the only runtime requirement is the `tesseract` binary.
 from __future__ import annotations
 
 import csv
+import math
 import os
 import re
 import shutil
 import subprocess
 import tempfile
+import time
 from dataclasses import dataclass
 from io import StringIO
 from pathlib import Path
@@ -25,8 +27,9 @@ MAX_PIXELS_PER_SIDE = 4000
 LOW_CONFIDENCE = 70.0
 _POINTS_PER_INCH = 72
 # Glyphs OCR commonly returns for a bullet dot and that are never real line-initial text.
-_UNAMBIGUOUS_BULLETS = "°«»*+■▪●¢©"
-_UNAMBIGUOUS_BULLET_RE = re.compile(rf"^[{re.escape(_UNAMBIGUOUS_BULLETS)}]\s*(?=\S)")
+_UNAMBIGUOUS_BULLET_RE = re.compile(r"^[°«»■▪●¢©]\s*(?=\S)")
+# "+" and "*" also start real text ("+44 20 7946 0958", "*nix"), so they need a following space.
+_SPACED_BULLET_RE = re.compile(r"^[+*]\s+(?=\S)")
 # Letters OCR confuses with a bullet dot ("e Built ...", "o Led ...").
 # Only when a capital or digit follows: no real sentence starts with a lone "e"/"o" and then
 # a capitalised word. Tesseract sometimes adds stray marks ("§", "=") right after the dot.
@@ -57,14 +60,16 @@ def ocr_pdf_pages(
     *,
     dpi: int = DEFAULT_DPI,
     lang: str = "eng",
-    timeout: int = 60,
+    timeout: int = 20,
     max_pages: int = 6,
+    deadline: float = 45.0,
 ) -> list[OcrPage]:
     """OCR the given pages (default: all) of a PDF.
 
     Raises `OcrError` when the binary is missing, the document has more than `max_pages`
-    pages to read (so one upload cannot monopolise a worker), or Tesseract fails or times
-    out; `InvalidDocument` when the bytes are not a readable PDF.
+    pages to read, a page cannot be rendered, Tesseract fails or exceeds `timeout` seconds
+    on a page, or the whole read exceeds `deadline` seconds (so one upload cannot monopolise
+    a worker); `InvalidDocument` when the bytes are not a readable PDF.
     """
     binary = tesseract_path()
     if binary is None or shutil.which(binary) is None:
@@ -77,9 +82,14 @@ def ocr_pdf_pages(
         if any(not 0 <= i < len(pdf) for i in indexes):
             raise OcrError(f"page index out of range for a {len(pdf)}-page PDF")
         pages = []
+        started = time.monotonic()
         for index in indexes:
+            remaining = deadline - (time.monotonic() - started)
+            if remaining <= 0:
+                raise OcrError(f"OCR exceeded its {deadline:.0f}s budget")
             image = _render_page(pdf, index, dpi)
-            lines, confidence = parse_tsv(_run_tesseract(binary, image, lang, timeout))
+            page_timeout = max(1, min(timeout, math.ceil(remaining)))
+            lines, confidence = parse_tsv(_run_tesseract(binary, image, lang, page_timeout))
             pages.append(OcrPage(index=index, lines=lines, mean_confidence=confidence))
         return pages
     finally:
@@ -97,12 +107,19 @@ def _open_pdf(data: bytes):
 
 def _render_page(pdf, index: int, dpi: int):
     """Grayscale PIL image of one page, scaled down if it would exceed the pixel cap."""
-    page = pdf[index]
+    import pypdfium2 as pdfium
+
+    try:
+        page = pdf[index]
+    except pdfium.PdfiumError as exc:
+        raise OcrError(f"could not load page {index + 1}: {exc}") from exc
     try:
         width, height = page.get_size()
         scale = dpi / _POINTS_PER_INCH
         scale = min(scale, MAX_PIXELS_PER_SIDE / max(width, height, 1.0))
         return page.render(scale=scale, grayscale=True).to_pil().convert("L")
+    except pdfium.PdfiumError as exc:
+        raise OcrError(f"could not render page {index + 1}: {exc}") from exc
     finally:
         page.close()
 
@@ -167,13 +184,14 @@ def parse_tsv(tsv: str) -> tuple[list[str], float]:
 def _normalise_bullets(lines: list[str]) -> list[str]:
     """Rewrite OCR bullet artefacts at line start to "• " across one page's lines.
 
-    Unambiguous non-word glyphs (° « » * + ■ ▪ ● ¢ ©) are always mapped. The letters "e" and
+    Unambiguous non-word glyphs (° « » ■ ▪ ● ¢ ©) are always mapped; "+" and "*" only when a
+    space follows, so "+44 ..." phone numbers and "*nix" survive. The letters "e" and
     "o" (how Tesseract often reads a round bullet) are only mapped when followed by a capital
     or digit and at least two lines on the page start that way, so a lone "o Led a team" is
     left alone. Tesseract usually puts each bullet in its own paragraph, so the count is per
     page rather than per paragraph.
     """
-    result = [_UNAMBIGUOUS_BULLET_RE.sub("• ", line) for line in lines]
+    result = [_SPACED_BULLET_RE.sub("• ", _UNAMBIGUOUS_BULLET_RE.sub("• ", line)) for line in lines]
     if sum(bool(_AMBIGUOUS_BULLET_RE.match(line)) for line in result) >= _MIN_AMBIGUOUS_LINES:
         result = [_AMBIGUOUS_BULLET_RE.sub("• ", line) for line in result]
     return [_BULLET_NOISE_RE.sub("• ", line) for line in result]

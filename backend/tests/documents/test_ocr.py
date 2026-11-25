@@ -168,3 +168,17 @@ def test_non_pdf_bytes_raise_invalid_document():
     """Garbage input is a bad upload (InvalidDocument), not an OCR infrastructure failure."""
     with pytest.raises(InvalidDocument):
         ocr_pdf_pages(b"definitely not a pdf")
+
+
+def test_plus_and_star_need_a_space_to_count_as_bullets():
+    from roletailor.documents.ocr import _normalise_bullets
+
+    lines = ["+44 20 7946 0958", "*nix administration", "+ Led migration", "* Built dashboards"]
+    assert _normalise_bullets(lines) == [
+        "+44 20 7946 0958", "*nix administration", "• Led migration", "• Built dashboards"]
+
+
+@needs_ocr
+def test_ocr_budget_is_enforced(scanned_pdf):
+    with pytest.raises(OcrError, match="budget"):
+        ocr_pdf_pages(scanned_pdf, deadline=0)

@@ -94,14 +94,22 @@ def render_with_edits(base: Base, edits: dict[str, str], structure: dict | None)
 def _pdf_in_place(base: Base, edits: dict[str, str]) -> tuple[bytes | None, str | None]:
     """In-place PDF bytes, or (None, reason) when the edit must fall back to the template."""
     from roletailor import documents
+    from roletailor.documents.pdf_sanitize import sanitize_pdf
 
     if base.pdf is None:
+        if base.document.layout_metadata.get("ocr"):
+            return None, "scanned PDF read with OCR; the original layout cannot be reused"
         return None, None
     try:
         data, _report = documents.edit_pdf_in_place(base.pdf, edits)
+        # The output is built from an uploaded file and may be shared: drop active content.
+        data = sanitize_pdf(data)
     except documents.PdfInPlaceUnsupported as exc:
         log.info("PDF in-place edit fell back to template: %s", exc)
         return None, str(exc)[:300]
+    except documents.InvalidDocument as exc:
+        log.warning("PDF could not be sanitised, using the template: %s", exc)
+        return None, "the PDF could not be made safe to share"
     return data, None
 
 
