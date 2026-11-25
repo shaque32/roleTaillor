@@ -43,6 +43,12 @@ count per iteration as a `pipeline.fabrication` validation row (`details.flagged
 `details.reverted_blocks`); per-rule counts overlap and are for breakdown only, never summed
 into the rate.
 
+Historical iterations have a `pipeline.coverage` row but no `pipeline.fabrication` row. Their
+fabrication count is unknown, not zero: in the SQL views such an iteration contributes to neither
+the numerator nor the denominator (its planned blocks are left out of the rate), a workflow with
+no `pipeline.fabrication` row has a NULL fabrication count and rate, and `generations_daily`
+aggregates only over the blocks of iterations with a known count (NULL rate when a day has none).
+
 Per generation, from `TailoringResult.validations`:
 - planned blocks: `details.planned_blocks` of the `pipeline.coverage` outcome.
 - flagged blocks for a blocking rule: `round((1 - score / 100) * planned)` (the score is
@@ -71,7 +77,7 @@ Generations, emitted in the worker after a run:
 | metric | type | labels | when |
 |---|---|---|---|
 | `roletailor_workflow_runs_total` | counter (exists) | outcome | every run |
-| `roletailor_workflow_run_seconds` | histogram (exists) | none | every run |
+| `roletailor_workflow_run_seconds` | histogram (exists) | none | every run; measured from when the worker task starts executing, so it excludes time spent waiting in the queue |
 | `roletailor_generation_cost_usd` | histogram, buckets 0.005,0.01,0.02,0.03,0.04,0.05,0.06,0.08,0.10,0.15,0.25,0.5,1 | none | completed runs, value `result.total_cost_usd` |
 | `roletailor_generation_failed_cost_usd_total` | counter | none | AI spend of runs that failed or were discarded (from the sink's running total) |
 | `roletailor_validation_planned_blocks_total` | counter | none | completed runs |
@@ -106,7 +112,13 @@ forced for the owner). Only role `rt_metrics` (read-only, for Grafana) gets
 SELECT. `rt_app` gets nothing on `roletailor_ops`.
 
 - `roletailor_ops.ai_calls_hourly(bucket, stage, provider, model, tier, status, route, calls, cost_usd, input_tokens, output_tokens, p50_latency_ms, p95_latency_ms)`
-- `roletailor_ops.generations(workflow_id, organization_id, status, started_at, finished_at, wall_seconds, iterations, ai_calls, failed_calls, fallback_calls, cost_usd, planned_blocks, fabrication_flagged_blocks, reverted_blocks)`
+- `roletailor_ops.generations(workflow_id, organization_id, status, started_at, finished_at, wall_seconds, iterations, ai_calls, failed_calls, fallback_calls, cost_usd, planned_blocks, fabrication_flagged_blocks, fabrication_planned_blocks, fabrication_attempt_rate, reverted_blocks)`
+  `started_at`/`finished_at`/`wall_seconds` span the AI calls: `ai_metrics.created_at` is the
+  call's completion time, captured by the Gateway right after the provider returns or raises
+  (before response validation and any wait for the sink) and bound explicitly by `DbMetricsSink`.
+  `fabrication_flagged_blocks`, `fabrication_planned_blocks` and `fabrication_attempt_rate` are
+  NULL when the workflow has no `pipeline.fabrication` row; `fabrication_planned_blocks` counts only
+  iterations that have one.
 - `roletailor_ops.generations_daily(day, status, generations, cost_usd, avg_cost_usd, p50_cost_usd, p95_cost_usd, p95_wall_seconds, fabrication_attempt_rate)`
 - `roletailor_ops.validation_daily(day, rule_key, rule_version, generations, planned_blocks, flagged_blocks, reverted_blocks, flagged_rate)`
 - `roletailor_ops.cost_by_org_daily(day, organization_id, generations, cost_usd)`

@@ -14,6 +14,7 @@ import os
 import threading
 import time
 import uuid
+from datetime import UTC, datetime
 from typing import TypeVar
 
 from pydantic import BaseModel, ValidationError
@@ -82,7 +83,8 @@ class Gateway:
                 except ValidationError:
                     parsed = None
                 if parsed is not None:
-                    self._record(label, route, prompt, "cached", Usage(), 0, None, "cache_hit")
+                    self._record(label, route, prompt, "cached", Usage(), 0, None, "cache_hit",
+                                 datetime.now(UTC))
                     return parsed
 
             repair = ""
@@ -95,30 +97,35 @@ class Gateway:
                 try:
                     resp = provider.complete(route.spec, req)
                 except ProviderError as e:
+                    completed_at = datetime.now(UTC)
                     status = "timed_out" if e.code == "timeout" else "failed"
                     waited_ms = int((time.monotonic() - started) * 1000)  # time lost before failing
-                    self._record(label, route, prompt, status, Usage(), waited_ms, e.code, route.reason)
+                    self._record(label, route, prompt, status, Usage(), waited_ms, e.code, route.reason,
+                                 completed_at)
                     self.router.breaker.failure(route.spec.key)
                     last_error = e.code
                     break  # fail over to the next model
+                # Taken before validation and any sink wait, so recording lag cannot shift it.
+                completed_at = datetime.now(UTC)
                 try:
                     parsed = output.model_validate_json(_strip_fences(resp.text))
                 except ValidationError as e:
                     self._record(label, route, prompt, "failed", resp.usage, resp.latency_ms,
-                                 "schema_invalid", route.reason)
+                                 "schema_invalid", route.reason, completed_at)
                     last_error = "schema_invalid"
                     repair = ("\n\nYour previous reply did not match the required JSON schema: "
                               f"{_short(e)}. Reply again with valid JSON only.")
                     continue
                 self.router.breaker.success(route.spec.key)
                 self._record(label, route, prompt, "succeeded", resp.usage, resp.latency_ms, None,
-                             route.reason)
+                             route.reason, completed_at)
                 self.cache.set(key, parsed.model_dump_json(), self.cache_ttl_s)
                 return parsed
         raise AIUnavailable(label, last_error)
 
     def _record(self, label: str, route: Route, prompt, status: str, usage: Usage,
-                latency_ms: int, error: str | None, reason: str) -> None:
+                latency_ms: int, error: str | None, reason: str,
+                completed_at: datetime) -> None:
         cost = route.spec.cost(usage) if status != "cached" else 0.0
         with self._lock:
             self.total_cost_usd += cost
@@ -129,7 +136,7 @@ class Gateway:
             prompt_text=prompt.text, status=status, routing_reason=reason, latency_ms=latency_ms,
             input_tokens=usage.input_tokens, output_tokens=usage.output_tokens,
             cache_read_tokens=usage.cache_read_tokens, estimated_cost_usd=cost,
-            error_code=error, trace_id=self.trace_id,
+            error_code=error, trace_id=self.trace_id, completed_at=completed_at,
         ))
 
 

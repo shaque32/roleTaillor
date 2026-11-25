@@ -19,9 +19,9 @@ from roletailor.services.sql import fetch_one
 _METRIC_INSERT = (
     "INSERT INTO ai_metrics (organization_id, workflow_id, model_version_id, prompt_version_id,"
     " stage, attempt, status, routing_reason, trace_id, latency_ms, input_tokens, output_tokens,"
-    " estimated_cost_usd, error_code)"
+    " estimated_cost_usd, error_code, created_at)"
     " VALUES (:org, :wf, :model, :prompt, :stage, {attempt}, :status, :reason, :trace, :latency,"
-    " :input, :output, :cost, :error)"
+    " :input, :output, :cost, :error, :created)"
 )
 
 
@@ -43,6 +43,7 @@ class DbMetricsSink:
                 "reason": rec.routing_reason, "trace": rec.trace_id, "latency": rec.latency_ms,
                 "input": rec.input_tokens, "output": rec.output_tokens,
                 "cost": rec.estimated_cost_usd, "error": rec.error_code,
+                "created": rec.completed_at,
             }
             row = fetch_one(
                 conn,

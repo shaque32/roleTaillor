@@ -56,14 +56,19 @@ SELECT
 FROM calls
 GROUP BY bucket, stage, provider, model, tier, status, route;
 
--- One row per workflow that made AI calls. planned_blocks sums the pipeline.coverage
--- rows and fabrication_flagged_blocks the pipeline.fabrication rows (one each per iteration).
+-- One row per workflow that made AI calls. planned_blocks sums the pipeline.coverage rows
+-- (one per iteration). Fabrication counts come from the pipeline.fabrication rows only:
+-- iterations recorded before that row existed have unknown fabrication counts, so they add
+-- to neither fabrication_flagged_blocks nor fabrication_planned_blocks (the rate's
+-- denominator). A workflow with no pipeline.fabrication row has NULL for all three
+-- fabrication columns (unknown, not zero).
 CREATE VIEW roletailor_ops.generations AS
 WITH call_agg AS (
     SELECT
         m.workflow_id,
         min(m.organization_id::text)::uuid AS organization_id,
-        -- created_at is when a call finished, so step back by its latency for the start.
+        -- created_at is when a call finished (captured by the Gateway before validation
+        -- and sink delays), so step back by its latency for the start.
         min(m.created_at - make_interval(secs => COALESCE(m.latency_ms, 0) / 1000.0)) AS started_at,
         max(m.created_at) AS finished_at,
         count(*)::bigint AS ai_calls,
@@ -81,12 +86,21 @@ coverage AS (
     WHERE rule_key = 'pipeline.coverage'
     GROUP BY workflow_id, created_at
 ),
+-- pipeline.fabrication holds the distinct blocks flagged by any fabrication rule;
+-- summing the per-rule rows would count a block once per rule it tripped. Planned blocks
+-- are those of the same iteration (same created_at), so the rate's denominator covers
+-- only iterations whose fabrication count is known.
+fabrication AS (
+    SELECT f.workflow_id,
+           sum(COALESCE((f.details->>'flagged_blocks')::int, 0))::bigint AS flagged,
+           sum(COALESCE(c.planned, (f.details->>'planned_blocks')::int, 0))::bigint AS planned
+    FROM roletailor.validation_results f
+    LEFT JOIN coverage c ON c.workflow_id = f.workflow_id AND c.created_at = f.created_at
+    WHERE f.rule_key = 'pipeline.fabrication'
+    GROUP BY f.workflow_id
+),
 rules AS (
     SELECT r.workflow_id,
-           -- pipeline.fabrication holds the distinct blocks flagged by any fabrication rule;
-           -- summing the per-rule rows would count a block once per rule it tripped.
-           sum(CASE WHEN r.rule_key = 'pipeline.fabrication'
-                    THEN COALESCE((r.details->>'flagged_blocks')::int, 0) ELSE 0 END)::bigint AS flagged,
            sum(CASE WHEN r.rule_key IN ('facts.numbers', 'facts.terms', 'facts.keywords', 'facts.claims',
                                         'layout.length', 'authenticity.phrases', 'authenticity.stuffing')
                     THEN COALESCE(jsonb_array_length(
@@ -113,13 +127,16 @@ SELECT
     COALESCE(i.iterations, 0)::bigint AS iterations,
     a.ai_calls, a.failed_calls, a.fallback_calls, a.cost_usd,
     COALESCE(p.planned_blocks, 0)::bigint AS planned_blocks,
-    COALESCE(r.flagged, 0)::bigint AS fabrication_flagged_blocks,
+    fb.flagged AS fabrication_flagged_blocks,
+    fb.planned AS fabrication_planned_blocks,
+    (fb.flagged::double precision / NULLIF(fb.planned, 0)) AS fabrication_attempt_rate,
     COALESCE(r.reverted, 0)::bigint AS reverted_blocks
 FROM call_agg a
 LEFT JOIN roletailor.tailoring_workflows w
        ON w.id = a.workflow_id AND w.organization_id = a.organization_id
 LEFT JOIN iters i ON i.workflow_id = a.workflow_id
 LEFT JOIN planned p ON p.workflow_id = a.workflow_id
+LEFT JOIN fabrication fb ON fb.workflow_id = a.workflow_id
 LEFT JOIN rules r ON r.workflow_id = a.workflow_id;
 
 CREATE VIEW roletailor_ops.generations_daily AS
@@ -132,8 +149,10 @@ SELECT
     (percentile_cont(0.5) WITHIN GROUP (ORDER BY cost_usd))::numeric AS p50_cost_usd,
     (percentile_cont(0.95) WITHIN GROUP (ORDER BY cost_usd))::numeric AS p95_cost_usd,
     (percentile_cont(0.95) WITHIN GROUP (ORDER BY wall_seconds))::double precision AS p95_wall_seconds,
+    -- Only workflows with known fabrication counts contribute (sum ignores NULLs); NULL
+    -- when the day has none.
     (sum(fabrication_flagged_blocks)::double precision
-        / NULLIF(sum(planned_blocks), 0)) AS fabrication_attempt_rate
+        / NULLIF(sum(fabrication_planned_blocks), 0)) AS fabrication_attempt_rate
 FROM roletailor_ops.generations
 GROUP BY 1, 2;
 

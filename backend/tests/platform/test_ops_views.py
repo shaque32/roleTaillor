@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from urllib.parse import urlsplit, urlunsplit
 
@@ -102,3 +103,156 @@ def test_privilege_boundaries(metrics, database, generated):
     with psycopg.connect(_url("rt_app", database), autocommit=True) as app, \
             pytest.raises(psycopg.errors.InsufficientPrivilege):
         app.execute("SELECT 1 FROM roletailor_ops.generations LIMIT 1")
+
+
+# --- fabrication counts, historical rows and call timestamps ---------------------------------
+
+def _owner_url(database: str) -> str:
+    from roletailor.config import get_settings
+
+    owner = os.environ.get("RT_MIGRATION_DATABASE_URL", get_settings().migration_database_url)
+    parts = urlsplit(owner.replace("postgresql+psycopg://", "postgresql://", 1))
+    return urlunsplit(parts._replace(path=f"/{database}"))
+
+
+@pytest.fixture()
+def owner(database):
+    """Schema owner connection, used to arrange rows the app role could not write directly."""
+    with psycopg.connect(_owner_url(database), autocommit=True) as conn:
+        yield conn
+
+
+def _workflow_on(owner, make_user, classic_docx, day: str) -> tuple[str, str]:
+    """A completed generation whose AI calls are moved to `day`, so `generations_daily` for
+    that day only holds the workflows a test arranged. Its validation rows are removed."""
+    user = make_user()
+    version = upload_resume(user, classic_docx)["version"]
+    r = start(user, version["id"], create_job(user)["id"])
+    assert r.status_code == 202 and r.json()["status"] == "completed", r.text
+    wid = r.json()["id"]
+    owner.execute("UPDATE roletailor.ai_metrics SET created_at = %s::timestamptz WHERE workflow_id = %s",
+                  (f"{day} 12:00+00", wid))
+    owner.execute("DELETE FROM roletailor.validation_results WHERE workflow_id = %s", (wid,))
+    return user.org_id, wid
+
+
+def _iteration(owner, org: str, wid: str, at: str, planned: int, flagged: int | None) -> None:
+    """One iteration's validation rows: pipeline.coverage always, pipeline.fabrication only
+    when `flagged` is given (iterations recorded before that row existed have none)."""
+    rows = [("pipeline.coverage", None, {"planned_blocks": planned, "reverted_blocks": 0})]
+    if flagged is not None:
+        rows.append(("pipeline.fabrication", round(100.0 * (1 - flagged / planned), 2),
+                     {"flagged_blocks": flagged, "planned_blocks": planned, "reverted_blocks": 0}))
+    for rule, score, details in rows:
+        owner.execute(
+            "INSERT INTO roletailor.validation_results (organization_id, workflow_id, rule_key,"
+            " rule_version, passed, score, details, created_at)"
+            " VALUES (%s, %s, %s, 'test', true, %s, %s::jsonb, %s::timestamptz)",
+            (org, wid, rule, score, json.dumps(details), at))
+
+
+def _generation(metrics, wid: str):
+    return metrics.execute(
+        "SELECT planned_blocks, fabrication_flagged_blocks, fabrication_planned_blocks,"
+        " fabrication_attempt_rate FROM roletailor_ops.generations WHERE workflow_id = %s",
+        (wid,)).fetchone()
+
+
+def _daily_rate(metrics, day: str):
+    row = metrics.execute(
+        "SELECT generations, fabrication_attempt_rate FROM roletailor_ops.generations_daily"
+        " WHERE day = %s::date AND status = 'completed'", (day,)).fetchone()
+    assert row is not None
+    return row
+
+
+def test_block_tripping_two_fabrication_rules_counts_once(metrics, owner, make_user, classic_docx):
+    org, wid = _workflow_on(owner, make_user, classic_docx, "2001-01-01")
+    at = "2001-01-01 12:05+00"
+    # Block b1 trips facts.numbers and facts.terms; 10 blocks planned, so each per-rule row
+    # reads 90 and the distinct count on pipeline.fabrication is 1, not 2.
+    for rule in ("facts.numbers", "facts.terms"):
+        owner.execute(
+            "INSERT INTO roletailor.validation_results (organization_id, workflow_id, rule_key,"
+            " rule_version, passed, score, details, created_at)"
+            " VALUES (%s, %s, %s, 'test', true, 90, '{}'::jsonb, %s::timestamptz)", (org, wid, rule, at))
+    _iteration(owner, org, wid, at, planned=10, flagged=1)
+
+    assert _generation(metrics, wid) == (10, 1, 10, pytest.approx(0.1))
+    assert _daily_rate(metrics, "2001-01-01") == (1, pytest.approx(0.1))
+    per_rule = dict(metrics.execute(
+        "SELECT rule_key, sum(flagged_blocks) FROM roletailor_ops.validation_daily"
+        " WHERE day = '2001-01-01' GROUP BY rule_key").fetchall())
+    assert per_rule["facts.numbers"] == per_rule["facts.terms"] == 1  # breakdown overlaps, rate does not
+
+
+def test_historical_iterations_without_fabrication_rows_are_unknown(metrics, owner, make_user, classic_docx):
+    org, wid = _workflow_on(owner, make_user, classic_docx, "2001-01-02")
+    _iteration(owner, org, wid, "2001-01-02 12:05+00", planned=10, flagged=None)
+    _iteration(owner, org, wid, "2001-01-02 12:10+00", planned=10, flagged=None)
+
+    # Counts are unknown (NULL), not zero, and the rate is NULL rather than 0.
+    assert _generation(metrics, wid) == (20, None, None, None)
+    assert _daily_rate(metrics, "2001-01-02") == (1, None)
+
+
+def test_mixed_old_and_new_iterations_use_only_known_blocks(metrics, owner, make_user, classic_docx):
+    org, wid = _workflow_on(owner, make_user, classic_docx, "2001-01-03")
+    _iteration(owner, org, wid, "2001-01-03 12:05+00", planned=10, flagged=None)  # old iteration
+    _iteration(owner, org, wid, "2001-01-03 12:10+00", planned=10, flagged=3)     # new iteration
+
+    # 3 / 10 over the iteration that has a count, not 3 / 20.
+    assert _generation(metrics, wid) == (20, 3, 10, pytest.approx(0.3))
+    assert _daily_rate(metrics, "2001-01-03") == (1, pytest.approx(0.3))
+
+
+def test_daily_rate_skips_historical_workflows(metrics, owner, make_user, classic_docx):
+    day = "2001-01-04"
+    old_org, old = _workflow_on(owner, make_user, classic_docx, day)
+    new_org, new = _workflow_on(owner, make_user, classic_docx, day)
+    _iteration(owner, old_org, old, f"{day} 12:05+00", planned=10, flagged=None)
+    _iteration(owner, new_org, new, f"{day} 12:05+00", planned=10, flagged=2)
+
+    generations, rate = _daily_rate(metrics, day)
+    assert generations == 2
+    assert rate == pytest.approx(0.2)  # not 2 / 20
+
+
+def test_wall_seconds_uses_call_completion_times(metrics, owner, make_user, classic_docx):
+    """A call persisted late keeps its real completion time (created_at), so the span is
+    first start to last completion, not first start to last persistence."""
+    from datetime import UTC, datetime, timedelta
+
+    from roletailor.ai.telemetry import CallRecord
+    from roletailor.services.metrics_sink import DbMetricsSink
+
+    user = make_user()
+    version = upload_resume(user, classic_docx)["version"]
+    r = start(user, version["id"], create_job(user)["id"])
+    assert r.status_code == 202, r.text
+    wid = r.json()["id"]
+    owner.execute("DELETE FROM roletailor.validation_results WHERE workflow_id = %s", (wid,))
+    owner.execute("DELETE FROM roletailor.ai_metrics WHERE workflow_id = %s", (wid,))
+
+    t0 = datetime(2001, 1, 5, 12, 0, tzinfo=UTC)
+    sink = DbMetricsSink(user.org_id, wid)
+
+    def record(stage: str, completed: datetime, latency_ms: int) -> None:
+        sink.record(CallRecord(
+            stage=stage, attempt=1, provider="prov", model_name="mod", model_revision="r",
+            capability_tier="low", prompt_key="plan", prompt_version=1, prompt_text="t",
+            status="succeeded", routing_reason="primary", latency_ms=latency_ms,
+            completed_at=completed))
+
+    # Call 1 runs 0-30s and call 2 completes at 50s; both are persisted just now, long after.
+    record("it1:plan", t0 + timedelta(seconds=30), 30_000)
+    record("it1:rewrite:b1", t0 + timedelta(seconds=50), 20_000)
+
+    stored = [row[0] for row in owner.execute(
+        "SELECT created_at FROM roletailor.ai_metrics WHERE workflow_id = %s ORDER BY created_at", (wid,))]
+    assert stored == [t0 + timedelta(seconds=30), t0 + timedelta(seconds=50)]
+    started, finished, wall = metrics.execute(
+        "SELECT started_at, finished_at, wall_seconds FROM roletailor_ops.generations WHERE workflow_id = %s",
+        (wid,)).fetchone()
+    assert (started, finished) == (t0, t0 + timedelta(seconds=50))
+    assert wall == pytest.approx(50.0)

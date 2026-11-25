@@ -49,16 +49,16 @@ Common tools:
 
 ## generationlatencyhigh
 
-**Means**: p95 run time over 15m is above 120s for 15m.
-**Likely causes**: a slow provider, fallbacks, queue backlog (not enough worker concurrency), long resumes.
+**Means**: p95 run time over 15m is above 120s for 15m. Run time starts when the worker task executes, so it excludes queue wait.
+**Likely causes**: a slow provider, fallbacks, long resumes, worker CPU saturation. A queue backlog does not show here (run time excludes queue wait) but delays users the same way.
 **First checks**: overview "AI call latency p95 by stage", "Fallback ratio". SQL: `SELECT workflow_id, wall_seconds, iterations, fallback_calls FROM roletailor_ops.generations ORDER BY started_at DESC LIMIT 50;` High `iterations` means rewrite retries. Check the Celery queue length and worker CPU.
 **Mitigations**: move the slow provider behind another in the tier order in `config/models.yaml`; raise worker `--concurrency` or add a worker.
 **Escalate** if it reaches 300s (generationlatencycritical).
 
 ## generationlatencycritical
 
-**Means**: p95 run time is above 300s for 10m. Users are likely abandoning.
-**Likely causes**: provider outage, stuck workers, queue backed up.
+**Means**: p95 run time is above 300s for 10m (measured from task start, excluding queue wait). Users are likely abandoning.
+**Likely causes**: provider outage, stuck workers.
 **First checks**: same as generationlatencyhigh; also confirm the worker is up (workermetricsdown) and the queue is draining.
 **Mitigations**: fail over away from the slow provider (reorder the tier in `config/models.yaml`, redeploy); restart stuck workers; scale workers.
 **Escalate** immediately.

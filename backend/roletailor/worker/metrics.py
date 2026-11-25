@@ -17,7 +17,8 @@ WORKFLOW_RUNS = Counter(
     "roletailor_workflow_runs_total", "Tailoring runs by outcome", ["outcome"]
 )
 WORKFLOW_RUN_SECONDS = Histogram(
-    "roletailor_workflow_run_seconds", "Tailoring run duration", buckets=(5, 15, 30, 60, 120, 300, 600)
+    "roletailor_workflow_run_seconds", "Tailoring run duration from task start, excluding queue wait",
+    buckets=(5, 15, 30, 60, 120, 300, 600),
 )
 GENERATION_COST = Histogram(
     "roletailor_generation_cost_usd", "AI cost of completed generations",

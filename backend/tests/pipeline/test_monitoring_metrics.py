@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import time
+from datetime import UTC, datetime
+
 import pytest
 from prometheus_client import REGISTRY
+from pydantic import BaseModel
 
 from roletailor.ai.cache import MemoryCache
 from roletailor.ai.gateway import build_gateway
 from roletailor.ai.monitoring import PrometheusSink, TeeSink, base_stage, error_label, route_of
+from roletailor.ai.providers.base import LLMResponse, ProviderError, Usage
 from roletailor.ai.providers.fake import FakeProvider
 from roletailor.ai.telemetry import CallRecord, MemorySink
 from roletailor.config import Settings
@@ -165,3 +170,56 @@ def test_fabrication_blocks_count_once_across_rules():
     fabrication = by_rule["pipeline.fabrication"]
     assert fabrication.details == {"flagged_blocks": 2, "planned_blocks": 10, "reverted_blocks": 1}
     assert fabrication.score == 80.0
+
+
+class _Out(BaseModel):
+    x: int
+
+
+class _StubProvider:
+    name = "stub"
+
+    def __init__(self, text: str = "", error: ProviderError | None = None):
+        self.text = text
+        self.error = error
+        self.returned_at: list[datetime] = []
+
+    def complete(self, spec, req):
+        self.returned_at.append(datetime.now(UTC))
+        if self.error is not None:
+            raise self.error
+        return LLMResponse(text=self.text, usage=Usage(input_tokens=10, output_tokens=5), latency_ms=7)
+
+
+class _SlowSink:
+    """Persists late, like DbMetricsSink waiting for its lock or transaction."""
+
+    def __init__(self):
+        self.records: list[CallRecord] = []
+        self.recorded_at: list[datetime] = []
+
+    def record(self, rec: CallRecord) -> None:
+        time.sleep(0.05)
+        self.recorded_at.append(datetime.now(UTC))
+        self.records.append(rec)
+
+
+@pytest.mark.parametrize("provider,status", [
+    (_StubProvider('{"x": 1}'), "succeeded"),
+    (_StubProvider("not json"), "failed"),  # schema_invalid, recorded after validation
+    (_StubProvider(error=ProviderError("slow", code="timeout")), "timed_out"),
+])
+def test_call_completion_time_is_captured_before_validation_and_sink_delay(provider, status):
+    sink = _SlowSink()
+    gw = build_gateway(sink, settings=Settings(llm_mode="fake"), cache=MemoryCache(),
+                       providers={"anthropic": provider, "deepseek": provider})
+    try:
+        gw.run(stage="plan", label="it1:plan", prompt_key="plan", payload={"a": 1}, output=_Out)
+    except Exception:
+        assert status != "succeeded"
+    rec = sink.records[0]
+    assert rec.status == status
+    assert rec.completed_at.utcoffset().total_seconds() == 0  # timezone-aware UTC
+    assert len(provider.returned_at) >= len(sink.records)
+    assert provider.returned_at[0] <= rec.completed_at < sink.recorded_at[0]
+    assert (sink.recorded_at[0] - rec.completed_at).total_seconds() >= 0.05

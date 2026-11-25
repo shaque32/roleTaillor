@@ -258,7 +258,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT prompt_key, prompt_version, provider, model,\n       sum(calls) AS calls,\n       sum(failure_rate * calls) / NULLIF(sum(calls), 0) AS failure_rate,\n       sum(fallback_rate * calls) / NULLIF(sum(calls), 0) AS fallback_rate,\n       sum(avg_cost_usd * calls) / NULLIF(sum(calls), 0) AS avg_cost_usd,\n       max(p95_latency_ms) AS worst_daily_p95_latency_ms\nFROM roletailor_ops.release_quality_daily\nWHERE $__timeFilter(day)\nGROUP BY 1, 2, 3, 4\nORDER BY calls DESC",
+          "rawSql": "SELECT prompt_key, prompt_version, provider, model,\n       sum(calls) AS calls,\n       sum(failure_rate * calls) / NULLIF(sum(calls), 0) AS failure_rate,\n       sum(fallback_rate * calls) / NULLIF(sum(calls), 0) AS fallback_rate,\n       sum(avg_cost_usd * calls) / NULLIF(sum(calls), 0) AS avg_cost_usd,\n       max(p95_latency_ms) AS worst_daily_stage_p95_latency_ms\nFROM roletailor_ops.release_quality_daily\nWHERE $__timeFilter(day)\nGROUP BY 1, 2, 3, 4\nORDER BY calls DESC",
           "refId": "A"
         }
       ],
@@ -304,7 +304,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "worst_daily_p95_latency_ms"
+              "options": "worst_daily_stage_p95_latency_ms"
             },
             "properties": [
               {
