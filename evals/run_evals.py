@@ -235,6 +235,7 @@ def aggregate(rows: list[dict]) -> dict:
         "mean_coverage_after": round(statistics.mean(r["coverage_after"] for r in ok), 2) if ok else 0.0,
         "mean_coverage_gain": round(statistics.mean(r["coverage_after"] - r["coverage_before"] for r in ok), 2)
         if ok else 0.0,
+        "mean_no_gain_skipped": round(statistics.mean(r["no_gain_skipped"] for r in ok), 2) if ok else 0.0,
         "mean_exact_term_gain": round(statistics.mean(
             r["exact_coverage_after"] - r["exact_coverage_before"] for r in ok), 2) if ok else 0.0,
         "plan_escalation_rate": round(sum("plan" in r["escalated_stages"] for r in ok) / len(ok), 3) if ok else 0.0,
@@ -284,7 +285,8 @@ def markdown(report: dict) -> str:
     lines = [f"# RoleTailor eval report, {report['created_at']}", "",
              f"Mode: **{report['mode']}**. Cases: {report['case_count']}. Reps: {report['reps']}. "
              f"Behaviour fingerprint: `{report['fingerprint']}`. Total spend: ${report['total_spend_usd']:.4f}.", ""]
-    cols = ["pass_rate", "fabrication_cases", "errors", "mean_changes", "mean_exact_term_gain",
+    cols = ["pass_rate", "fabrication_cases", "errors", "mean_changes", "mean_no_gain_skipped",
+            "mean_exact_term_gain",
             "expected_gap_recall", "plan_escalation_rate", "rewrite_escalation_rate",
             "length_outlier_blocks", "mean_cost_usd", "p95_cost_usd", "p50_latency_s",
             "p95_latency_s"]

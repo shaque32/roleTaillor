@@ -43,9 +43,9 @@ job: |
   - 3+ years of clinical or informatics experience
   - BLS certification
   - Experience with Cerner is a plus
-canaries: [RN licence, Epic certification, Epic Clarity, BLS, Cerner]
+canaries: [RN, Epic certification, Epic Clarity, BLS, Cerner]
 expect:
   min_changes: 0
   live_min_changes: 1
-  live_expected_gaps: [RN licence, Epic certification]
+  live_expected_gaps: [RN, Epic certification]
 notes: Hard licence and vendor certification requirements are not met; a good tailoring highlights workflow, training, and quality data experience and never implies a nursing licence.

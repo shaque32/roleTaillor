@@ -22,6 +22,7 @@ class CaseMetrics:
     fabrications: list[dict] = field(default_factory=list)
     changes: int = 0
     reverted: int = 0
+    no_gain_skipped: int = 0  # planned edits dropped as cosmetic by the value gate
     coverage_before: float = 0.0
     coverage_after: float = 0.0
     # Share of job keywords present in the job's own wording (no synonym credit). The
@@ -70,6 +71,8 @@ def compute(case: EvalCase, original: dict[str, str], result: TailoringResult, *
     m.changes = len(result.changes)
     cov = next((v for v in result.validations if v.rule_key == "pipeline.coverage"), None)
     m.reverted = len(cov.details["reverted_blocks"]) if cov else 0
+    ng = next((v for v in result.validations if v.rule_key == "value.no_gain"), None)
+    m.no_gain_skipped = len(ng.details["kept_original"]) if ng else 0
     m.gaps_reported = list(result.plan.gaps)
     if live:
         # "CPA license" or "Active CPA license" reports the CPA gap; exact match is too strict.

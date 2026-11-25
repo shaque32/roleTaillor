@@ -77,6 +77,7 @@ class ModelRouter:
         self.timeout_s = float(r.get("request_timeout_seconds", 45))
         self.rewrite_batch_size = int(r.get("rewrite_batch_size", 8))
         self.rewrite_concurrency = int(r.get("rewrite_concurrency", 4))
+        self.plan_escalate_on_low_confidence = bool(r.get("plan_escalate_on_low_confidence", False))
         self.breaker = CircuitBreaker(int(cb.get("failures", 3)), float(cb.get("window_seconds", 60)),
                                       float(cb.get("cooldown_seconds", 120)))
 

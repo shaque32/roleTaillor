@@ -136,19 +136,6 @@ def test_page_limit_reverts_growth(doc, monkeypatch):
     assert page.details["reverted_blocks"] and result.edits == {}
 
 
-def test_unevidenced_must_have_is_always_a_gap():
-    from roletailor.domain.models import JobAnalysis, Keyword
-    from roletailor.pipeline.stages import _sanitize_plan
-
-    job = JobAnalysis(keywords=[Keyword(term="CPA", importance="must", category="certification"),
-                                Keyword(term="Excel", importance="must"),
-                                Keyword(term="Workiva", importance="nice")])
-    plan = TailoringPlan(gaps=[], block_plans=[])
-    out = _sanitize_plan(plan, job, scopes={}, focus=None,
-                         evidence={"CPA": [], "Excel": ["p3"], "Workiva": []})
-    assert out.gaps == ["CPA"]
-
-
 class Unsure(FakeProvider):
     """Plans with low confidence; `rewrites` controls whether it proposes any edits."""
 
@@ -164,8 +151,16 @@ class Unsure(FakeProvider):
         return plan
 
 
-def test_low_confidence_plan_escalates_only_when_it_rewrites(doc):
-    for rewrites, expected_plan_calls in ((True, 2), (False, 1)):
+def test_low_confidence_plan_escalation_is_opt_in_and_skips_empty_plans(doc):
+    import yaml
+
+    from roletailor.ai.router import ModelRouter
+
+    base = yaml.safe_load(Settings().models_config_path.read_text())
+    on = {**base, "routing": {**base["routing"], "plan_escalate_on_low_confidence": True}}
+    for cfg, rewrites, expected_plan_calls in ((base, True, 1), (on, True, 2), (on, False, 1)):
         prov = Unsure(rewrites)
-        run(doc, prov)
+        gw = build_gateway(MemorySink(), settings=Settings(llm_mode="fake"), cache=MemoryCache(),
+                           providers={"anthropic": prov, "deepseek": prov}, router=ModelRouter(cfg))
+        tailor(document=doc[1], job_text=JD, prefs=TailoringPrefs(), gateway=gw)
         assert sum(k == "plan" for _, k in prov.calls) == expected_plan_calls

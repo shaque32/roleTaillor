@@ -131,21 +131,22 @@ def plan(gw: Gateway, *, doc: ParsedDocument, structure: ResumeStructure, job: J
         "focus_block_ids": focus or [],
     }
     p = gw.run(stage="plan", label=label, prompt_key="plan", payload=payload, output=TailoringPlan)
-    if p.confidence < 0.6 and any(bp.action == "rewrite" for bp in p.block_plans):
-        # Low confidence in a plan that will change text: escalate one tier once and keep
-        # the better-confidence plan. A plan with nothing to rewrite (a poor match) is
-        # not escalated: a larger model cannot create evidence, it only costs more.
+    if (gw.router.plan_escalate_on_low_confidence and p.confidence < 0.6
+            and any(bp.action == "rewrite" for bp in p.block_plans)):
+        # Optional (routing.plan_escalate_on_low_confidence): re-plan one tier higher and
+        # keep the better-confidence plan. Never for a plan with nothing to rewrite: a
+        # larger model cannot create evidence for a poor match, it only costs more.
         try:
             p2 = gw.run(stage="plan", label=label, prompt_key="plan", payload=payload,
                         output=TailoringPlan, escalate=1)
             p = p2 if p2.confidence >= p.confidence else p
         except AIUnavailable:
             pass
-    return _sanitize_plan(p, job, scopes, focus, evidence=payload["evidence"])
+    return _sanitize_plan(p, job, scopes, focus)
 
 
 def _sanitize_plan(p: TailoringPlan, job: JobAnalysis, scopes: dict[str, str],
-                   focus: list[str] | None, evidence: dict[str, list[str]] | None = None) -> TailoringPlan:
+                   focus: list[str] | None) -> TailoringPlan:
     terms = {k.term.lower(): k.term for k in job.keywords}
     keep: list[BlockPlan] = []
     seen: set[str] = set()
@@ -162,12 +163,6 @@ def _sanitize_plan(p: TailoringPlan, job: JobAnalysis, scopes: dict[str, str],
                  for b in focus if b in scopes and b not in seen]
     p.block_plans = keep
     p.gaps = [g for g in p.gaps if g.lower() in terms]
-    # Backstop: a must-have requirement that no resume block mentions is always a gap,
-    # even if the planner left it out. Missing licences and credentials matter most.
-    if evidence is not None:
-        reported = {g.lower() for g in p.gaps}
-        p.gaps += [k.term for k in job.keywords
-                   if k.importance == "must" and not evidence.get(k.term) and k.term.lower() not in reported]
     return p
 
 
@@ -193,8 +188,20 @@ def rewrite(gw: Gateway, *, items: list[dict], context: dict, feedback: dict[str
 
     with ThreadPoolExecutor(max_workers=max(1, min(concurrency, len(batches)))) as pool:
         results = list(pool.map(lambda a: run(*a), enumerate(batches)))
-    wanted = {b["block_id"] for b in items}
-    return {r.block_id: r for rs in results for r in rs if r.block_id in wanted}
+    originals = {b["block_id"]: b["text"] for b in items}
+    out = {r.block_id: r for rs in results for r in rs if r.block_id in originals}
+    for bid, r in out.items():
+        r.new_text = _match_ending(originals[bid], r.new_text)
+    return out
+
+
+def _match_ending(original: str, new: str) -> str:
+    """Keep the original's closing full stop (or lack of one). Models drop or add it at
+    random, which shows up as noise in the diff the candidate reviews."""
+    o, n = original.rstrip(), new.rstrip()
+    if not n or o.endswith(".") == n.endswith("."):
+        return new
+    return n + "." if o.endswith(".") else n.rstrip(".")
 
 
 def verify_claims(gw: Gateway, *, pairs: list[dict], facts: FactInventory, label: str) -> ClaimCheck:

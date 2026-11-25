@@ -6,6 +6,7 @@ Each rule has a stable key and version that land in validation_results.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 from roletailor.domain.models import FactInventory, JobAnalysis, Violation
@@ -16,10 +17,11 @@ from roletailor.pipeline.text import (
     contains_term,
     count_term,
     first_word,
+    norm,
     tech_terms,
 )
 
-RULE_VERSION = "1"
+RULE_VERSION = "2"
 
 BANNED_PHRASES = [
     "results-driven", "results driven", "passionate", "dynamic professional", "synergy",
@@ -133,3 +135,29 @@ def check_document(texts: dict[str, str], bullets_by_entry: list[list[str]],
                                  detail=f"{verbs.count(v)} bullets in one role start with '{v}'",
                                  severity="warn"))
     return out
+
+
+def has_gain(original: str, new_text: str, job: JobAnalysis) -> bool:
+    """True when an edit measurably helps this job: it uses a job keyword in the job's own
+    wording that the line lacked, shows one more job keyword, or moves the first job
+    keyword earlier. Edits that only reshuffle or reword are noise in the candidate's
+    review and a risk to their meaning, so the pipeline keeps the original instead.
+    With no job keywords to measure against, every edit is allowed through."""
+    if not job.keywords:
+        return True
+    if any(contains_term(new_text, k.term) and not contains_term(original, k.term) for k in job.keywords):
+        return True
+
+    def shown(text: str) -> int:
+        return sum(contains_any(text, [k.term, *k.synonyms]) for k in job.keywords)
+
+    def first(text: str) -> int | None:
+        t = norm(text)
+        hits = [m.start() for k in job.keywords for f in [k.term, *k.synonyms] if norm(f)
+                for m in [re.search(rf"(?<![\w+#]){re.escape(norm(f))}(?![\w+#])", t)] if m]
+        return min(hits) if hits else None
+
+    if shown(new_text) > shown(original):
+        return True
+    a, b = first(original), first(new_text)
+    return a is not None and b is not None and b < a - 3

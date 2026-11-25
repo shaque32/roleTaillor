@@ -31,6 +31,7 @@ from roletailor.pipeline.validation.rules import (
     DocContext,
     check_block,
     check_document,
+    has_gain,
     length_bounds,
 )
 
@@ -88,7 +89,7 @@ def tailor(
     doc_ctx = DocContext(facts=structure.facts, job=job)
     accepted, log_by_rule, dropped = _rewrite_and_validate(
         gateway, document=document, plan=plan, scopes=scopes, job=job, doc_ctx=doc_ctx,
-        prefs=pref_dict, it=it)
+        prefs=pref_dict, it=it, focus=set(focus_block_ids or []))
 
     edits = {bid: r.new_text for bid, r in accepted.items()}
     page_count = None
@@ -131,7 +132,7 @@ def tailor(
 
 
 def _rewrite_and_validate(gateway: Gateway, *, document: ParsedDocument, plan, scopes, job,
-                          doc_ctx: DocContext, prefs: dict, it: str):
+                          doc_ctx: DocContext, prefs: dict, it: str, focus: set[str] = frozenset()):
     by_id = {b.id: b for b in document.blocks}
     plans = {bp.block_id: bp for bp in plan.block_plans}
     pending = set(plans)
@@ -139,6 +140,7 @@ def _rewrite_and_validate(gateway: Gateway, *, document: ParsedDocument, plan, s
     accepted: dict[str, BlockRewrite] = {}
     log_by_rule: dict[str, list[Violation]] = defaultdict(list)
     verifier_down = False
+    no_gain: list[str] = []
     context = {"job_title": job.title, "positioning": plan.positioning,
                "tone": prefs.get("tone"), "technical_depth": prefs.get("technical_depth")}
     router = gateway.router
@@ -167,6 +169,9 @@ def _rewrite_and_validate(gateway: Gateway, *, document: ParsedDocument, plan, s
                 continue
             if clean(r.new_text) == clean(by_id[bid].text):
                 continue  # model chose to keep it; nothing to validate
+            if bid not in focus and not has_gain(by_id[bid].text, r.new_text, job):
+                no_gain.append(bid)
+                continue  # cosmetic edit: keep the original, do not spend a verify call
             ctx = BlockContext(block_id=bid, original=by_id[bid].text, scope=scopes[bid],
                                target_keywords=plans[bid].target_keywords)
             v = check_block(ctx, r.new_text, doc_ctx)
@@ -203,6 +208,10 @@ def _rewrite_and_validate(gateway: Gateway, *, document: ParsedDocument, plan, s
 
     if verifier_down and not accepted:
         raise AIUnavailable(f"{it}:verify_claims", "claim verifier unavailable")
+    for bid in no_gain:
+        log_by_rule["value.no_gain"].append(Violation(
+            rule_key="value.no_gain", block_id=bid, severity="warn",
+            detail="edit did not add, surface, or lead with a job keyword; original kept"))
     return accepted, log_by_rule, sorted(pending)
 
 
@@ -254,6 +263,11 @@ def _rule_outcomes(log_by_rule: dict[str, list[Violation]], dropped: list[str],
             threshold=None,
             details={"violations": [v.model_dump() for v in vs[:50]],
                      "reverted_to_original": still}))
+    skipped = log_by_rule.get("value.no_gain", [])
+    out.append(ValidationOutcome(
+        rule_key="value.no_gain", rule_version=RULE_VERSION, passed=True,
+        score=round(100.0 * (1 - len(skipped) / planned), 2) if planned else 100.0,
+        details={"kept_original": [v.block_id for v in skipped]}))
     out.append(ValidationOutcome(
         rule_key="pipeline.coverage", rule_version=RULE_VERSION, passed=True,
         details={"planned_blocks": planned, "reverted_blocks": dropped}))

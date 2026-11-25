@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 from roletailor.ai.gateway import _strip_fences
 from roletailor.ai.providers.base import LLMRequest, ModelSpec, ProviderError
 
-RUBRIC_VERSION = "1"
+RUBRIC_VERSION = "2"
 SYSTEM = """You review resume edits made by an automated tailoring tool. You get the job
 description, the original text of each edited block, and the new text. Judge only what
 the edits changed. Be strict and consistent; do not reward length.
@@ -32,7 +32,10 @@ Score each criterion from 1 (bad) to 5 (excellent):
 If there are no edits, score relevance by whether leaving the resume alone was right
 for this job (5 if the job is a poor fit or nothing could be honestly improved).
 
-List each unsupported claim you find verbatim in unsupported_claims. Reply with JSON only."""
+In unsupported_claims, quote only text from the new version that states something the
+original resume does not support. Leave it empty when every edit is supported; do not
+list edits that are merely weaker, awkward, or pointless (score those under relevance,
+readability, or voice). Reply with JSON only."""
 
 
 class JudgeVerdict(BaseModel):
