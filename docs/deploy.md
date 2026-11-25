@@ -80,7 +80,7 @@ These steps need your Fly account and credentials. Start with staging.
    ```bash
    psql "postgresql://<admin-user>@localhost:<port>/<db>" -f db/bootstrap/managed_roles.sql
    ```
-   Paste each password from your password manager when asked. Nothing you type shows on screen, and the passwords never reach a command line, shell history, the process list or the server log. An empty answer clears that password, so if that happens, connect again and run `\password rt_app` (or `rt_owner`). Re-running the script leaves existing passwords alone; add `-v set_passwords=1` to be asked for both again.
+   Paste each password from your password manager when asked. Nothing you type shows on screen, and the passwords never reach a command line, shell history, the process list or the server log. An empty answer clears that password, so if that happens, connect again and run `\password rt_app` (or `rt_owner`). Run it from an interactive terminal: without one it stops before the prompts and changes nothing. Re-running the script leaves existing passwords alone; add `-v set_passwords=1` to be asked for both again.
    If the cluster admin cannot create roles, create users named `rt_owner` and `rt_app` with `fly mpg users` instead. `rt_app` must not be a superuser, own the database, or have BYPASSRLS.
 4. **Run the bootstrap script.** `deploy/fly/bootstrap.sh staging` creates the three apps and the Redis volume, creates the Tigris bucket, generates `REDIS_PASSWORD` and `RT_SECRET_KEY`, and prompts for the provider and Stripe keys without echoing them.
 5. **Set the database URLs.**

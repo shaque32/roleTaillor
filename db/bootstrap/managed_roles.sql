@@ -27,6 +27,10 @@
 
 \set ON_ERROR_STOP on
 
+-- Role creation and password prompts commit together. If a prompt fails or psql is stopped
+-- before COMMIT, newly created roles roll back and the next run prompts again.
+BEGIN;
+
 SELECT NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'rt_owner') AS create_owner \gset
 \if :create_owner
   CREATE ROLE rt_owner LOGIN;
@@ -40,24 +44,44 @@ ALTER ROLE rt_owner LOGIN;
 ALTER ROLE rt_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
 
 -- Hidden password prompts, only for a role created just now unless set_passwords is given.
--- \password reads from the terminal, so this works with -f as well as \i. An empty answer
--- clears the password, so a run without a terminal must not reach these prompts.
 \if :{?set_passwords}
   \set create_owner true
   \set create_app true
 \endif
 \if :create_owner
+  \set need_prompt true
+\elif :create_app
+  \set need_prompt true
+\else
+  \set need_prompt false
+\endif
+
+\if :need_prompt
+  -- \password reads from the controlling terminal. Without one it reads stdin, where end of
+  -- input is an empty answer that clears the password. Stop first, so nothing is changed.
+  \set has_tty `(: </dev/tty) 2>/dev/null && echo true || echo false`
+  \if :has_tty
+  \else
+    \echo 'No terminal: run this script from an interactive shell to set passwords.'
+    \echo 'Nothing was changed. Without -v set_passwords=1, a re-run on existing roles needs no terminal.'
+    DO $$ BEGIN RAISE EXCEPTION 'managed_roles.sql needs a terminal for the password prompts'; END $$;
+  \endif
+\endif
+
+\if :create_owner
   \echo 'Set the rt_owner password (input is hidden; paste it from your password manager):'
   \password rt_owner
 \else
-  \echo 'rt_owner already existed: password unchanged (use -v set_passwords=1 to set it)'
+  \echo 'rt_owner already existed: kept its current password (use -v set_passwords=1 to set it)'
 \endif
 \if :create_app
   \echo 'Set the rt_app password (input is hidden; paste it from your password manager):'
   \password rt_app
 \else
-  \echo 'rt_app already existed: password unchanged (use -v set_passwords=1 to set it)'
+  \echo 'rt_app already existed: kept its current password (use -v set_passwords=1 to set it)'
 \endif
+
+COMMIT;
 
 -- pgvector is not a trusted extension, so the admin installs it up front.
 CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public;
