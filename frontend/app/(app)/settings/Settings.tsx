@@ -206,6 +206,7 @@ function BillingCard() {
   const active = b?.subscription?.status === "active";
   const hasSubscription = !!b?.subscription;
   const pastDue = b?.subscription?.status === "past_due";
+  const trialing = b?.subscription?.status === "trialing";
   return (
     <Card as="section">
       <div id="billing" className="scroll-mt-20" />
@@ -247,7 +248,7 @@ function BillingCard() {
               </Alert>
             )}
             <div className="flex flex-wrap gap-2">
-              {!active && !pastDue && (
+              {!active && !trialing && !pastDue && (
                 <Button onClick={() => checkout("subscription")} loading={busy === "subscription"}>
                   Subscribe · $9.99/month <ExternalLink className="h-3.5 w-3.5" aria-hidden />
                 </Button>

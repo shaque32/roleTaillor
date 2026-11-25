@@ -52,7 +52,8 @@ def read_plain_text(text: str) -> ParsedDocument:
             previous_raw = ""
             continue
         if previous_raw and paragraphs and _continues(
-                previous_raw, line, previous_is_heading=_is_heading(paragraphs[-1][0])):
+                previous_raw, line,
+                previous_is_heading=not paragraphs[-1][1] and _is_heading(paragraphs[-1][0])):
             merged, is_list = paragraphs[-1]
             paragraphs[-1] = (f"{merged} {line}", is_list)
         else:

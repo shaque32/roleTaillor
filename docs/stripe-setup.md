@@ -69,7 +69,8 @@ Test cards (any future expiry, any CVC):
 
 - [ ] Repeat sections 1-3 in live mode (prices, portal config, webhook endpoint are separate per mode).
 - [ ] Replace all four `RT_STRIPE_*` values with live ones; confirm `sk_live_`/`whsec_` are in secrets only.
-- [ ] Webhook endpoint shows recent deliveries as 200 after a real $9.99 purchase; refund it and confirm the credit is reversed.
+- [ ] Subscribe for $9.99 with a real card; the webhook endpoint shows the deliveries as 200 and Settings shows the subscription as active.
+- [ ] Buy one $0.50 pay-per-use credit, confirm it appears, refund it in Stripe, and confirm the credit is gone.
 - [ ] Subscribe, cancel in the portal, and confirm the app shows "Ends <date>".
 - [ ] Enable Stripe Radar defaults, email receipts, and failed-payment retry emails (Settings -> Billing).
 - [ ] Complete business verification and tax settings (Stripe Tax if you sell where VAT/GST applies).

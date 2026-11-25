@@ -183,7 +183,7 @@ def status(principal: Principal) -> dict:
 # --------------------------------------------------------------------------
 
 
-def _stripe() -> stripe.StripeClient:
+def stripe_client() -> stripe.StripeClient:
     key = get_settings().stripe_secret_key
     if not key:
         raise AppError(503, "billing_unavailable", "Billing is not configured.")
@@ -210,7 +210,7 @@ def _customer_id(client: stripe.StripeClient, conn: Connection, principal: Princ
 
 def create_checkout(principal: Principal, mode: Literal["subscription", "pay_per_use"]) -> str:
     settings = get_settings()
-    client = _stripe()
+    client = stripe_client()
     metadata = {"organization_id": str(principal.org_id), "mode": mode}
     if mode == "subscription":
         if not settings.stripe_subscription_price_id:
@@ -257,7 +257,7 @@ def create_checkout(principal: Principal, mode: Literal["subscription", "pay_per
 
 def create_portal_session(principal: Principal) -> str:
     """Stripe customer portal URL (cancel, payment method, invoices)."""
-    client = _stripe()
+    client = stripe_client()
     with db.tenant_tx(principal.org_id) as conn:
         org = fetch_one(conn, "SELECT stripe_customer_id FROM organizations WHERE id = :id",
                         {"id": principal.org_id})

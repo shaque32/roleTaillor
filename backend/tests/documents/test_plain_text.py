@@ -80,3 +80,9 @@ def test_missing_section_findings():
     codes = {f["detail"] for f in doc.findings}
     assert "No education section found" in codes and "No skills section found" in codes
     assert not read_plain_text(RESUME).findings
+
+
+def test_wrapped_bullet_that_looks_like_a_heading_keeps_its_continuation():
+    doc = read_plain_text("Experience\n- CI/CD\nand release automation")
+    assert [(b.text, b.is_list_item) for b in doc.blocks] == [
+        ("Experience", False), ("CI/CD and release automation", True)]

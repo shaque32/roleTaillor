@@ -29,8 +29,10 @@ export function ResumeUpload({ onUploaded, submitLabel = "Upload resume" }: { on
   const [mode, setMode] = useState<"file" | "text">("file");
   const [text, setText] = useState("");
   const [textName, setTextName] = useState("");
-  const meaningful = text.replace(/\s/g, "").length;
-  const textError = text.length > MAX_TEXT_CHARS ? `That is over the ${MAX_TEXT_CHARS.toLocaleString()} character limit.` : null;
+  // Count code points, not UTF-16 units, so the limits match the backend's.
+  const charCount = Array.from(text).length;
+  const meaningful = Array.from(text.replace(/\s/g, "")).length;
+  const textError = charCount > MAX_TEXT_CHARS ? `That is over the ${MAX_TEXT_CHARS.toLocaleString()} character limit.` : null;
   const textReady = meaningful >= MIN_TEXT_CHARS && !textError;
 
   function switchMode(next: "file" | "text") {
@@ -110,8 +112,8 @@ export function ResumeUpload({ onUploaded, submitLabel = "Upload resume" }: { on
           placeholder="Jane Doe&#10;jane@example.com&#10;&#10;EXPERIENCE&#10;…"
         />
         <p className="text-xs text-ink-muted" aria-live="polite">
-          {text.length.toLocaleString()} / {MAX_TEXT_CHARS.toLocaleString()} characters
-          {meaningful < MIN_TEXT_CHARS && text.length > 0 && ` · add a bit more (at least ${MIN_TEXT_CHARS} non-space characters)`}
+          {charCount.toLocaleString()} / {MAX_TEXT_CHARS.toLocaleString()} characters
+          {meaningful < MIN_TEXT_CHARS && charCount > 0 && ` · add a bit more (at least ${MIN_TEXT_CHARS} non-space characters)`}
         </p>
         <Input label="Resume name" value={textName} onChange={(e) => setTextName(e.target.value)} placeholder="Pasted resume" hint="Only you see this, e.g. “Product Manager – 2026”." />
         {error && <Alert tone="error">{error}</Alert>}

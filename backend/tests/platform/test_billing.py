@@ -232,15 +232,56 @@ def test_async_payment_succeeded_creates_credit_and_failed_does_not(client, exha
     assert user.get("/v1/billing/status").json()["pay_per_use_credits"] == 1
 
 
-def test_invoice_paid_restores_past_due(client, exhausted_user):
+def _stripe_reports(monkeypatch, subscription: dict) -> None:
+    """Stripe's authoritative copy of a subscription, as subscriptions.retrieve returns it."""
+    class FakeClient:
+        def __init__(self, key):
+            retrieve = lambda sid: SimpleNamespace(to_dict=lambda: {**subscription, "id": sid})  # noqa: E731
+            self.v1 = SimpleNamespace(subscriptions=SimpleNamespace(retrieve=retrieve))
+
+    monkeypatch.setattr("roletailor.services.billing.stripe.StripeClient", FakeClient)
+
+
+@pytest.mark.parametrize("stripe_status", ["active", "past_due"])
+def test_invoice_paid_follows_stripe_subscription_status(client, exhausted_user, monkeypatch, stripe_status):
     user = exhausted_user
     sub = sub_payload(user)
     send(client, stripe_event("customer.subscription.created", sub))
     invoice = {"id": "in_1", "customer": user.customer, "subscription": sub["id"]}
     send(client, stripe_event("invoice.payment_failed", invoice))
     assert user.get("/v1/billing/status").json()["subscription"]["status"] == "past_due"
+    # Paying one invoice only restores access if Stripe says the subscription is current.
+    _stripe_reports(monkeypatch, {**sub, "status": stripe_status})
     assert send(client, stripe_event("invoice.paid", invoice)).json()["status"] == "processed"
-    assert user.get("/v1/billing/status").json()["subscription"]["status"] == "active"
+    assert user.get("/v1/billing/status").json()["subscription"]["status"] == stripe_status
+
+
+def test_payment_failed_does_not_revive_canceled_subscription(client, exhausted_user):
+    user = exhausted_user
+    sub = sub_payload(user)
+    send(client, stripe_event("customer.subscription.created", sub))
+    send(client, stripe_event("customer.subscription.deleted", {**sub, "status": "canceled"}))
+    invoice = {"id": "in_late", "customer": user.customer, "subscription": sub["id"]}
+    assert send(client, stripe_event("invoice.payment_failed", invoice)).json()["status"] == "processed"
+    assert user.get("/v1/billing/status").json()["subscription"]["status"] == "canceled"
+
+
+def test_refund_before_settlement_grants_no_credit(client, exhausted_user):
+    user = exhausted_user
+    intent = f"pi_{uuid.uuid4().hex}"
+    refund = stripe_event("charge.refunded", {
+        "id": "ch_early", "payment_intent": intent, "amount": 50, "amount_refunded": 50, "currency": "usd",
+        "customer": user.customer,
+    })
+    assert send(client, refund).json() == {"status": "processed"}
+    settled = stripe_event("checkout.session.async_payment_succeeded", {
+        "id": "cs_early", "mode": "payment", "payment_status": "paid", "payment_intent": intent,
+        "amount_total": 50, "currency": "usd", "customer": user.customer,
+        "metadata": {"organization_id": user.org_id, "mode": "pay_per_use"},
+    })
+    assert send(client, settled).json() == {"status": "processed"}
+    assert user.get("/v1/billing/status").json()["pay_per_use_credits"] == 0
+    assert count(user.org_id, "SELECT count(*) FROM payments WHERE status = 'refunded'") == 1
 
 
 def test_canceled_subscription_not_reverted_by_late_event(client, exhausted_user):
