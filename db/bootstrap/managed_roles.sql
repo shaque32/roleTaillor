@@ -22,6 +22,9 @@
 --
 -- If the provider's admin user lacks CREATEROLE, create users named rt_owner and rt_app through
 -- the provider's user management instead, then run only the extension/grant statements below.
+-- On that path this script does not set the passwords: build the database URLs from the passwords
+-- the provider holds for those users. If CREATE EXTENSION is refused, enable "vector" through the
+-- provider first.
 -- rt_app must NOT be a superuser, a database/schema owner, or have BYPASSRLS, otherwise
 -- row-level security does not apply to it.
 
