@@ -1,0 +1,35 @@
+{
+  "additionalPlain": "ExampleCo is an equal opportunity employer.\n\n\nLife at ExampleCo\n \nWe offer hybrid work.\n",
+  "additional": "<div>ExampleCo is an equal opportunity employer.</div><div><br></div><div><strong>Life at ExampleCo</strong></div>\n<div>&nbsp;</div>\n<div>We offer hybrid work.</div>",
+  "categories": {
+    "commitment": "Full-time",
+    "location": "Singapore, Singapore",
+    "team": "Data",
+    "allLocations": [
+      "Singapore, Singapore"
+    ]
+  },
+  "createdAt": 1786469891368,
+  "descriptionPlain": "A World-Changing Company\n \nExampleCo builds software for data-driven decisions.\n\n\nThe Role\n \nYou will design and run streaming data pipelines with Kafka and Spark, own data quality checks, and partner with analytics and machine learning teams to ship reliable datasets.\n",
+  "description": "<div><strong><span style=\"font-size: 18px;\">A World-Changing Company</span></strong></div>\n<div>&nbsp;</div>\n<div>ExampleCo builds software for data-driven decisions.</div><div><br></div><div><strong style=\"font-size: 18px;\">The Role</strong></div>\n<div>&nbsp;</div>\n<div>You will design and run streaming data pipelines with Kafka and Spark, own data quality checks, and partner with analytics and machine learning teams to ship reliable datasets.</div>",
+  "id": "6ed76ce8-4156-4b60-b120-403538bd66cd",
+  "lists": [
+    {
+      "text": "Core Responsibilities",
+      "content": "\n<li>Build streaming pipelines with Kafka and Spark.</li>\n<li>Own data quality checks and alerting.</li>\n"
+    },
+    {
+      "text": "What We Require",
+      "content": "\n<li>At least three years of data engineering experience.</li>\n<li>Strong SQL and Python.</li>\n"
+    }
+  ],
+  "text": "Data Engineer",
+  "country": "SG",
+  "workplaceType": "hybrid",
+  "opening": "<div><strong><span style=\"font-size: 18px;\">A World-Changing Company</span></strong></div>\n<div>&nbsp;</div>\n<div>ExampleCo builds software for data-driven decisions.</div>",
+  "openingPlain": "A World-Changing Company\n \nExampleCo builds software for data-driven decisions.\n",
+  "descriptionBody": "<div><strong style=\"font-size: 18px;\">The Role</strong></div>\n<div>&nbsp;</div>\n<div>You will design and run streaming data pipelines with Kafka and Spark, own data quality checks, and partner with analytics and machine learning teams to ship reliable datasets.</div>",
+  "descriptionBodyPlain": "The Role\n \nYou will design and run streaming data pipelines with Kafka and Spark, own data quality checks, and partner with analytics and machine learning teams to ship reliable datasets.\n",
+  "hostedUrl": "https://jobs.lever.co/exampleco/6ed76ce8-4156-4b60-b120-403538bd66cd",
+  "applyUrl": "https://jobs.lever.co/exampleco/6ed76ce8-4156-4b60-b120-403538bd66cd/apply"
+}

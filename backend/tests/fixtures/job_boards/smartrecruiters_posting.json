@@ -1,0 +1,79 @@
+{
+  "id": "744000163611949",
+  "name": "Machine Learning Engineer",
+  "uuid": "9261a0a4-053b-482e-8e93-892f2c8c5a37",
+  "jobId": "6571272d-4ffa-4e8b-a948-4ed94ed7f907",
+  "jobAdId": "f98bfc9c-e7fe-4da5-b0e7-25f9176f5095",
+  "defaultJobAd": true,
+  "refNumber": "REF301754T",
+  "company": {
+    "name": "Example Group",
+    "identifier": "ExampleGroup"
+  },
+  "location": {
+    "city": "Berlin",
+    "region": "Berlin",
+    "country": "de",
+    "remote": false,
+    "hybrid": true,
+    "fullLocation": "Berlin, Germany"
+  },
+  "customField": [
+    {
+      "fieldId": "5abe2a4ab60a5e486a2d9b1d",
+      "fieldLabel": "Contract type",
+      "valueId": "98487475",
+      "valueLabel": "Unlimited"
+    }
+  ],
+  "releasedDate": "2026-11-25T06:07:52.009Z",
+  "creator": {
+    "name": "",
+    "avatarUrl": ""
+  },
+  "postingUrl": "https://jobs.smartrecruiters.com/ExampleGroup/744000163611949-machine-learning-engineer",
+  "applyUrl": "https://jobs.smartrecruiters.com/ExampleGroup/744000163611949-machine-learning-engineer?oga=true",
+  "jobAd": {
+    "sections": {
+      "companyDescription": {
+        "title": "Company Description",
+        "text": "<p>Do you want beneficial technologies being shaped by your ideas? Welcome to Example Group.</p><p>&#xa0;</p>"
+      },
+      "jobDescription": {
+        "title": "Job Description",
+        "text": "<p>You will design and run streaming data pipelines with Kafka and Spark, own data quality checks, and partner with analytics and machine learning teams to ship reliable datasets.</p><p>&#xa0;</p><p><strong>Your tasks</strong></p><p>•&#xa0; Train and deploy ranking models with PyTorch;</p><p>•&#xa0; Monitor model drift in production.</p>"
+      },
+      "qualifications": {
+        "title": "Qualifications",
+        "text": "<ul><li>MSc in Computer Science or similar</li><li>3+ years of MLOps experience</li></ul>"
+      },
+      "additionalInformation": {
+        "title": "Additional Information",
+        "text": ""
+      }
+    }
+  },
+  "active": true,
+  "visibility": "PUBLIC",
+  "industry": {
+    "id": "automotive",
+    "label": "Automotive"
+  },
+  "function": {
+    "id": "engineering",
+    "label": "Engineering"
+  },
+  "experienceLevel": {
+    "id": "mid_senior_level",
+    "label": "Mid-Senior Level"
+  },
+  "typeOfEmployment": {
+    "id": "permanent",
+    "label": "Full-time"
+  },
+  "language": {
+    "code": "en",
+    "label": "English",
+    "labelNative": "English (US)"
+  }
+}
