@@ -39,6 +39,8 @@ log = logging.getLogger(__name__)
 MAX_ROUNDS = 3  # upper bound; routing.rewrite_max_rounds sets the actual number
 BLOCKING_RULES = ("facts.numbers", "facts.terms", "facts.keywords", "facts.claims",
                   "layout.length", "authenticity.phrases", "authenticity.stuffing")
+# Gates that catch invented content. A block can trip several of them at once.
+FABRICATION_RULES = ("facts.numbers", "facts.terms", "facts.keywords", "facts.claims")
 
 
 class TailoringPrefs(BaseModel):
@@ -292,6 +294,14 @@ def _rule_outcomes(log_by_rule: dict[str, list[Violation]], dropped: list[str],
         score=round(100.0 * (1 - len(skipped) / planned), 2) if planned else 100.0,
         details={"kept_original": [v.block_id for v in skipped],
                  "proposals": {v.block_id: v.detail.split(": ", 1)[-1] for v in skipped}}))
+    # Distinct blocks flagged by any fabrication gate: per-rule counts overlap, so the
+    # fabrication attempt rate is computed from this row, never by summing rules.
+    fabricated = {v.block_id for rule in FABRICATION_RULES for v in log_by_rule.get(rule, [])}
+    out.append(ValidationOutcome(
+        rule_key="pipeline.fabrication", rule_version=RULE_VERSION, passed=True,
+        score=round(100.0 * (1 - len(fabricated) / planned), 2) if planned else 100.0,
+        details={"flagged_blocks": len(fabricated), "planned_blocks": planned,
+                 "reverted_blocks": len(fabricated & final_fail)}))
     out.append(ValidationOutcome(
         rule_key="pipeline.coverage", rule_version=RULE_VERSION, passed=True,
         details={"planned_blocks": planned, "reverted_blocks": dropped}))

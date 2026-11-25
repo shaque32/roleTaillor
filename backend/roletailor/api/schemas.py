@@ -50,6 +50,12 @@ class ResumeRename(_Body):
     name: str = Field(min_length=1, max_length=200)
 
 
+class ResumeTextIn(_Body):
+    # Generous transport guard; the service enforces the real 50,000-char limit with a 413.
+    text: str = Field(max_length=200_000)
+    name: str | None = Field(default=None, max_length=200)
+
+
 class JobIn(_Body):
     source_url: str | None = Field(default=None, max_length=2000)
     description: str | None = None

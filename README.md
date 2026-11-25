@@ -37,6 +37,9 @@ celery -A roletailor.worker.celery_app worker -l info
 cd ../frontend && npm install && npm run dev
 ```
 
+## Deploy
+Cloud deployment (Fly.io, Tigris storage, managed Postgres, CI/CD) is described in [docs/deploy.md](docs/deploy.md).
+
 ## Test and evaluate
 ```bash
 make setup             # once: backend/.venv with dev dependencies
@@ -51,3 +54,4 @@ Any canary term (a job requirement the resume does not show) or new number in th
 - To change a model or a stage's tier, edit `config/models.yaml`, run `make eval-live`, and commit `evals/results/live_summary.json` with the change. CI blocks prompt, model, and validation changes without a live summary from the same code.
 - To change a prompt, add `backend/roletailor/ai/prompts/<stage>.v<N+1>.md`. Never edit a shipped version. To roll back, pin the previous version under `prompt_pins`.
 - Each model call writes one `ai_metrics` row with the model, prompt version, routing reason, tokens, cost and latency.
+- Dashboards and alerts on cost, latency, errors and fabrication attempts: see `docs/monitoring.md` and `docs/runbooks/ai-alerts.md`.

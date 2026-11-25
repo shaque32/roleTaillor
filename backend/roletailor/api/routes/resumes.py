@@ -6,7 +6,7 @@ from uuid import UUID
 from fastapi import APIRouter, File, Form, Response, UploadFile
 
 from roletailor.api.deps import CurrentPrincipal
-from roletailor.api.schemas import ResumeRename
+from roletailor.api.schemas import ResumeRename, ResumeTextIn
 from roletailor.config import get_settings
 from roletailor.services import resumes
 from roletailor.services.errors import AppError
@@ -36,6 +36,11 @@ def upload_resume(
 @router.post("/guided", status_code=201)
 def create_guided(body: GuidedResume, principal: CurrentPrincipal) -> dict:
     return resumes.create_guided(principal, body)
+
+
+@router.post("/text", status_code=201)
+def create_from_text(body: ResumeTextIn, principal: CurrentPrincipal) -> dict:
+    return resumes.create_from_text(principal, body.text, body.name)
 
 
 @router.get("/{resume_id}")

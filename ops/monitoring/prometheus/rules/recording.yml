@@ -1,0 +1,95 @@
+# Recording rules. Names come from docs/monitoring-contract.md; the few extra
+# helper rules (workflow_runs, planned blocks, budget) are used only by alerts.
+# `sum without(instance, job)` keeps working with one or many worker replicas.
+groups:
+  - name: roletailor_cost
+    interval: 1m
+    rules:
+      - record: roletailor:generation_cost_usd:mean_30m
+        expr: |
+          sum(rate(roletailor_generation_cost_usd_sum[30m]))
+          /
+          sum(rate(roletailor_generation_cost_usd_count[30m]))
+      - record: roletailor:generation_cost_usd:p95_1h
+        expr: |
+          histogram_quantile(0.95,
+            sum without(instance, job) (rate(roletailor_generation_cost_usd_bucket[1h])))
+      - record: roletailor:generation_cost_usd:count_30m
+        expr: sum(increase(roletailor_generation_cost_usd_count[30m]))
+      - record: roletailor:ai_spend_usd:increase_1h
+        expr: sum(increase(roletailor_ai_cost_usd_total[1h]))
+      - record: roletailor:ai_spend_usd:increase_24h
+        expr: sum(increase(roletailor_ai_cost_usd_total[24h]))
+      # Daily budget in USD. Edit this one number to change DailyAISpendOverBudget.
+      - record: roletailor:ai_spend_budget_usd:daily
+        expr: vector(50)
+
+  - name: roletailor_latency
+    interval: 1m
+    rules:
+      - record: roletailor:workflow_run_seconds:p95_15m
+        expr: |
+          histogram_quantile(0.95,
+            sum without(instance, job) (rate(roletailor_workflow_run_seconds_bucket[15m])))
+      - record: roletailor:ai_call_seconds:p95_15m
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le, stage, provider) (rate(roletailor_ai_call_seconds_bucket[15m])))
+      - record: roletailor:ai_call_seconds:count_15m
+        expr: sum by (stage, provider) (increase(roletailor_ai_call_seconds_count[15m]))
+
+  - name: roletailor_errors
+    interval: 1m
+    rules:
+      - record: roletailor:workflow_runs:increase_15m
+        expr: sum(increase(roletailor_workflow_runs_total{outcome=~"completed|failed"}[15m]))
+      - record: roletailor:workflow_failure_ratio:15m
+        expr: |
+          sum(rate(roletailor_workflow_runs_total{outcome="failed"}[15m]))
+          /
+          sum(rate(roletailor_workflow_runs_total{outcome=~"completed|failed"}[15m]))
+      - record: roletailor:ai_call_failure_ratio:10m
+        expr: |
+          sum by (provider) (rate(roletailor_ai_calls_total{status=~"failed|timed_out"}[10m]))
+          /
+          sum by (provider) (rate(roletailor_ai_calls_total{status!="cached"}[10m]))
+      - record: roletailor:ai_calls:count_10m
+        expr: sum by (provider) (increase(roletailor_ai_calls_total{status!="cached"}[10m]))
+      # "or vector(0)": no fallback series exists until the first fallback, and the
+      # ratio should read 0 rather than "no data" while calls are flowing.
+      - record: roletailor:ai_fallback_ratio:15m
+        expr: |
+          (
+            sum(rate(roletailor_ai_calls_total{route=~"failover|escalated", status!="cached"}[15m]))
+            or vector(0)
+          )
+          /
+          sum(rate(roletailor_ai_calls_total{status!="cached"}[15m]))
+      - record: roletailor:ai_calls:count_15m
+        expr: sum(increase(roletailor_ai_calls_total{status!="cached"}[15m]))
+
+  - name: roletailor_fabrication
+    interval: 1m
+    rules:
+      - record: roletailor:validation_planned_blocks:increase_1h
+        expr: sum(increase(roletailor_validation_planned_blocks_total[1h]))
+      - record: roletailor:fabrication_attempt_ratio:1h
+        expr: |
+          sum(increase(roletailor_validation_fabrication_blocks_total[1h]))
+          /
+          sum(increase(roletailor_validation_planned_blocks_total[1h]))
+      - record: roletailor:fabrication_attempt_ratio:6h
+        expr: |
+          sum(increase(roletailor_validation_fabrication_blocks_total[6h]))
+          /
+          sum(increase(roletailor_validation_planned_blocks_total[6h]))
+      - record: roletailor:fabrication_attempt_ratio:7d
+        expr: |
+          sum(increase(roletailor_validation_fabrication_blocks_total[7d]))
+          /
+          sum(increase(roletailor_validation_planned_blocks_total[7d]))
+      - record: roletailor:validation_reverted_ratio:1h
+        expr: |
+          sum by (rule) (increase(roletailor_validation_reverted_blocks_total[1h]))
+          / on() group_left()
+          sum(increase(roletailor_validation_planned_blocks_total[1h]))
