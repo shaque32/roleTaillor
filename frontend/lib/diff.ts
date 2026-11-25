@@ -84,3 +84,46 @@ export function applySide(segments: DiffSegment[], side: "before" | "after"): st
     .map((s) => s.text)
     .join("");
 }
+
+/** Phrase-level view of diffWords. ratio = changed characters / total characters across both sides (0..1). */
+export function diffPhrases(before: string, after: string): { segments: DiffSegment[]; ratio: number } {
+  const words = diffWords(before, after);
+
+  // Absorb short "bridge" equals (whitespace, "a", "to", "and") between two changes into both sides.
+  const expanded: DiffSegment[] = [];
+  words.forEach((s, i) => {
+    const prev = words[i - 1];
+    const next = words[i + 1];
+    if (s.op === "equal" && prev && next && prev.op !== "equal" && next.op !== "equal" && s.text.trim().length <= 3) {
+      expanded.push({ op: "delete", text: s.text }, { op: "insert", text: s.text });
+    } else {
+      expanded.push(s);
+    }
+  });
+
+  // Normalise each run of changes into one delete followed by one insert.
+  const segments: DiffSegment[] = [];
+  let del = "";
+  let ins = "";
+  const flush = () => {
+    if (del) segments.push({ op: "delete", text: del });
+    if (ins) segments.push({ op: "insert", text: ins });
+    del = "";
+    ins = "";
+  };
+  for (const s of expanded) {
+    if (s.op === "delete") del += s.text;
+    else if (s.op === "insert") ins += s.text;
+    else {
+      flush();
+      const last = segments[segments.length - 1];
+      if (last && last.op === "equal") last.text += s.text;
+      else segments.push({ ...s });
+    }
+  }
+  flush();
+
+  const total = before.length + after.length;
+  const changed = segments.reduce((n, s) => (s.op === "equal" ? n : n + s.text.length), 0);
+  return { segments, ratio: total === 0 ? 0 : changed / total };
+}

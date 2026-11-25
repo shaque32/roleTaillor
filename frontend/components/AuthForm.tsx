@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
+import { Mail, User } from "lucide-react";
 import { auth, ApiError } from "@/lib/api";
-import { Alert, Button, Input } from "@/components/ui";
+import { cx } from "@/lib/format";
+import { Alert, Button, Input, PasswordInput, focusRing } from "@/components/ui";
 
 function safeNext(next: string | null, fallback: string) {
   return next && next.startsWith("/") && !next.startsWith("//") ? next : fallback;
@@ -28,7 +30,11 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
     if (mode === "register" && password.length < 10) errs.password = "Use at least 10 characters.";
     if (mode === "register" && !fullName) errs.full_name = "Enter your name.";
     setFieldErrors(errs);
-    if (Object.keys(errs).length) return;
+    const firstInvalid = (["full_name", "email", "password"] as const).find((k) => errs[k]);
+    if (firstInvalid) {
+      e.currentTarget.querySelector<HTMLInputElement>(`[name="${firstInvalid}"]`)?.focus();
+      return;
+    }
 
     setBusy(true);
     setError(null);
@@ -55,39 +61,40 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
 
   return (
     <>
-      <h1 className="text-xl font-semibold">{mode === "login" ? "Sign in" : "Create your account"}</h1>
-      <p className="mt-1 text-sm text-ink-muted">
-        {mode === "login" ? "Welcome back." : "10 free tailored resumes. No card required."}
+      <h1 className="text-3xl font-semibold tracking-tight">{mode === "login" ? "Welcome back" : "Create your account"}</h1>
+      <p className="mt-2 text-sm text-ink-muted">
+        {mode === "login" ? "Sign in to pick up where you left off." : "10 free tailored resumes. No card required."}
       </p>
-      <form onSubmit={onSubmit} className="mt-6 space-y-4" noValidate>
+      <form onSubmit={onSubmit} className="mt-7 space-y-5" noValidate>
         {error && <Alert tone="error">{error}</Alert>}
-        {mode === "register" && <Input name="full_name" label="Full name" autoComplete="name" required error={fieldErrors.full_name} />}
-        <Input name="email" type="email" label="Email" autoComplete="email" required error={fieldErrors.email} />
-        <Input
+        {mode === "register" && (
+          <Input name="full_name" label="Full name" autoComplete="name" required leading={<User />} error={fieldErrors.full_name} />
+        )}
+        <Input name="email" type="email" label="Email" autoComplete="email" required leading={<Mail />} error={fieldErrors.email} />
+        <PasswordInput
           name="password"
-          type="password"
           label="Password"
           autoComplete={mode === "login" ? "current-password" : "new-password"}
           required
           hint={mode === "register" ? "At least 10 characters." : undefined}
           error={fieldErrors.password}
         />
-        <Button type="submit" className="w-full" loading={busy}>
-          {mode === "login" ? "Sign in" : "Create account"}
+        <Button type="submit" size="lg" className="w-full" loading={busy}>
+          {mode === "login" ? (busy ? "Signing in…" : "Sign in") : busy ? "Creating your account…" : "Create account"}
         </Button>
       </form>
       <p className="mt-6 text-center text-sm text-ink-muted">
         {mode === "login" ? (
           <>
             New to RoleTailor?{" "}
-            <Link href="/register" className="font-medium text-brand-600 hover:underline">
+            <Link href="/register" className={cx("rounded font-medium text-brand-700 hover:underline", focusRing)}>
               Create an account
             </Link>
           </>
         ) : (
           <>
             Already have an account?{" "}
-            <Link href="/login" className="font-medium text-brand-600 hover:underline">
+            <Link href="/login" className={cx("rounded font-medium text-brand-700 hover:underline", focusRing)}>
               Sign in
             </Link>
           </>

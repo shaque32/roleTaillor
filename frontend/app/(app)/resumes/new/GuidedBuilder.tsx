@@ -1,8 +1,8 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
-import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowDown, ArrowUp, Check, Pencil, Plus, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 import type {
   CertificationItem,
@@ -15,7 +15,8 @@ import type {
   SectionKind,
   TextItem,
 } from "@/lib/types";
-import { Alert, Button, Card, CardBody, Input, PageHeader, Select, Textarea, useToast } from "@/components/ui";
+import { Alert, Button, Card, CardBody, IconButton, Input, PageHeader, Section, Textarea, focusRing, useToast } from "@/components/ui";
+import { cx } from "@/lib/format";
 
 type Draft = GuidedSection & { key: string };
 
@@ -83,9 +84,16 @@ export function GuidedBuilder() {
   const [contact, setContact] = useState<GuidedContact>({ full_name: "", email: "", phone: "", location: "", links: [] });
   const [linksText, setLinksText] = useState("");
   const [sections, setSections] = useState<Draft[]>(() => [section("summary"), section("experience"), section("education"), section("skills")]);
-  const [addKind, setAddKind] = useState<SectionKind>("certifications");
+  const [renamingKey, setRenamingKey] = useState<string | null>(null);
+  const [focusIdx, setFocusIdx] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (focusIdx === null) return;
+    document.getElementById(`sec-${focusIdx}`)?.focus();
+    setFocusIdx(null);
+  }, [focusIdx]);
 
   const updateSection = (key: string, fn: (s: Draft) => Draft) => setSections((xs) => xs.map((s) => (s.key === key ? fn(s) : s)));
   const updateItem = (key: string, idx: number, patch: Partial<GuidedItem>) =>
@@ -122,63 +130,96 @@ export function GuidedBuilder() {
     <form onSubmit={submit} className="mx-auto max-w-3xl">
       <PageHeader title="Build a resume" description="Fill in what applies. Skip anything that doesn't. You can reorder sections." />
       <div className="space-y-6">
-        <Card as="section">
-          <CardBody className="space-y-4">
-            <Input label="Resume name" value={name} onChange={(e) => setName(e.target.value)} hint="Only you see this." />
-          </CardBody>
-        </Card>
-
-        <Card as="section">
-          <CardBody className="space-y-4">
-            <h2 className="text-base font-semibold">Contact</h2>
+        <Card as="section" aria-labelledby="about-you">
+          <CardBody className="space-y-5">
+            <h2 id="about-you" className="text-lg font-semibold">
+              About you
+            </h2>
             <div className="grid gap-4 sm:grid-cols-2">
               <Input label="Full name" required value={contact.full_name} onChange={(e) => setContact({ ...contact, full_name: e.target.value })} autoComplete="name" />
               <Input label="Email" type="email" value={contact.email} onChange={(e) => setContact({ ...contact, email: e.target.value })} autoComplete="email" />
               <Input label="Phone" type="tel" value={contact.phone} onChange={(e) => setContact({ ...contact, phone: e.target.value })} autoComplete="tel" />
               <Input label="Location" value={contact.location} onChange={(e) => setContact({ ...contact, location: e.target.value })} placeholder="City, Country" />
             </div>
-            <Textarea label="Links" rows={2} value={linksText} onChange={(e) => setLinksText(e.target.value)} hint="LinkedIn, portfolio, GitHub. One per line." />
+            <Textarea label="Links" autoGrow rows={2} value={linksText} onChange={(e) => setLinksText(e.target.value)} hint="LinkedIn, portfolio, GitHub. One per line." />
+            <Input label="Resume name" value={name} onChange={(e) => setName(e.target.value)} hint="Only you see this name." />
           </CardBody>
         </Card>
 
         {sections.map((s, si) => (
           <Card as="section" key={s.key}>
-            <CardBody className="space-y-4">
-              <div className="flex items-end gap-2">
-                <Input className="flex-1" label={`${KIND_LABEL[s.kind]} section title`} value={s.title} onChange={(e) => updateSection(s.key, (x) => ({ ...x, title: e.target.value }))} />
-                <Button size="sm" variant="ghost" aria-label="Move section up" disabled={si === 0} onClick={() => setSections((xs) => move(xs, si, -1))}>
-                  <ArrowUp className="h-4 w-4" />
-                </Button>
-                <Button size="sm" variant="ghost" aria-label="Move section down" disabled={si === sections.length - 1} onClick={() => setSections((xs) => move(xs, si, 1))}>
-                  <ArrowDown className="h-4 w-4" />
-                </Button>
-                <Button size="sm" variant="ghost" aria-label={`Delete ${s.title} section`} onClick={() => setSections((xs) => xs.filter((x) => x.key !== s.key))}>
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+            <CardBody>
+              <div className="flex items-center gap-2">
+                <div className="min-w-0 flex-1">
+                  {renamingKey === s.key ? (
+                    <div className="flex items-center gap-2">
+                      <Input
+                        className="flex-1"
+                        label={`${KIND_LABEL[s.kind]} section title`}
+                        value={s.title}
+                        autoFocus
+                        onChange={(e) => updateSection(s.key, (x) => ({ ...x, title: e.target.value }))}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === "Escape") {
+                            e.preventDefault();
+                            setRenamingKey(null);
+                            setFocusIdx(si);
+                          }
+                        }}
+                      />
+                      <IconButton label="Done renaming" size="sm" onClick={() => { setRenamingKey(null); setFocusIdx(si); }}>
+                        <Check className="h-4 w-4" aria-hidden />
+                      </IconButton>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1">
+                      <h2 id={`sec-${si}`} tabIndex={-1} className={cx("min-w-0 break-words rounded text-lg font-semibold", focusRing)}>
+                        {s.title}
+                      </h2>
+                      <IconButton label="Rename section" size="sm" onClick={() => setRenamingKey(s.key)}>
+                        <Pencil className="h-4 w-4" aria-hidden />
+                      </IconButton>
+                    </div>
+                  )}
+                </div>
+                <div className="flex shrink-0 items-center">
+                  <IconButton size="sm" label="Move section up" disabled={si === 0} onClick={() => setSections((xs) => move(xs, si, -1))}>
+                    <ArrowUp className="h-4 w-4" aria-hidden />
+                  </IconButton>
+                  <IconButton size="sm" label="Move section down" disabled={si === sections.length - 1} onClick={() => setSections((xs) => move(xs, si, 1))}>
+                    <ArrowDown className="h-4 w-4" aria-hidden />
+                  </IconButton>
+                  <IconButton size="sm" label={`Delete ${s.title} section`} onClick={() => setSections((xs) => xs.filter((x) => x.key !== s.key))}>
+                    <Trash2 className="h-4 w-4" aria-hidden />
+                  </IconButton>
+                </div>
               </div>
 
-              <div className="space-y-4">
+              <div className="mt-4">
                 {s.items.map((it, ii) => (
-                  <div key={ii} className="rounded-md border border-slate-100 bg-slate-50/50 p-4">
-                    <ItemEditor kind={s.kind} item={it} onChange={(patch) => updateItem(s.key, ii, patch)} />
+                  <div key={ii} className={cx(ii > 0 && "mt-5 border-t border-line pt-5")}>
                     {s.items.length > 1 && (
-                      <div className="mt-3 flex justify-end gap-1">
-                        <Button size="sm" variant="ghost" aria-label="Move entry up" disabled={ii === 0} onClick={() => updateSection(s.key, (x) => ({ ...x, items: move(x.items, ii, -1) }))}>
-                          <ArrowUp className="h-4 w-4" />
-                        </Button>
-                        <Button size="sm" variant="ghost" aria-label="Move entry down" disabled={ii === s.items.length - 1} onClick={() => updateSection(s.key, (x) => ({ ...x, items: move(x.items, ii, 1) }))}>
-                          <ArrowDown className="h-4 w-4" />
-                        </Button>
-                        <Button size="sm" variant="ghost" onClick={() => updateSection(s.key, (x) => ({ ...x, items: x.items.filter((_, i) => i !== ii) }))}>
-                          <Trash2 className="h-4 w-4" aria-hidden /> Remove entry
-                        </Button>
+                      <div className="mb-3 flex items-center justify-between gap-2">
+                        <span className="text-sm font-medium text-ink-muted">Entry {ii + 1}</span>
+                        <div className="flex items-center">
+                          <IconButton size="sm" label={`Move entry ${ii + 1} up`} disabled={ii === 0} onClick={() => updateSection(s.key, (x) => ({ ...x, items: move(x.items, ii, -1) }))}>
+                            <ArrowUp className="h-4 w-4" aria-hidden />
+                          </IconButton>
+                          <IconButton size="sm" label={`Move entry ${ii + 1} down`} disabled={ii === s.items.length - 1} onClick={() => updateSection(s.key, (x) => ({ ...x, items: move(x.items, ii, 1) }))}>
+                            <ArrowDown className="h-4 w-4" aria-hidden />
+                          </IconButton>
+                          <IconButton size="sm" label={`Remove entry ${ii + 1}`} onClick={() => updateSection(s.key, (x) => ({ ...x, items: x.items.filter((_, i) => i !== ii) }))}>
+                            <Trash2 className="h-4 w-4" aria-hidden />
+                          </IconButton>
+                        </div>
                       </div>
                     )}
+                    <ItemEditor kind={s.kind} item={it} onChange={(patch) => updateItem(s.key, ii, patch)} />
                   </div>
                 ))}
               </div>
               {s.kind !== "summary" && (
-                <Button size="sm" variant="secondary" onClick={() => updateSection(s.key, (x) => ({ ...x, items: [...x.items, blankItem(x.kind)] }))}>
+                <Button className="mt-5" size="sm" variant="secondary" onClick={() => updateSection(s.key, (x) => ({ ...x, items: [...x.items, blankItem(x.kind)] }))}>
                   <Plus className="h-4 w-4" aria-hidden /> Add {s.kind === "skills" ? "skill group" : "entry"}
                 </Button>
               )}
@@ -186,27 +227,34 @@ export function GuidedBuilder() {
           </Card>
         ))}
 
-        <div className="flex flex-wrap items-end gap-2">
-          <Select label="Add a section" value={addKind} onChange={(e) => setAddKind(e.target.value as SectionKind)}>
+        <Section title="Add a section" id="add-section">
+          <div className="flex flex-wrap gap-2">
             {(Object.keys(KIND_LABEL) as SectionKind[]).map((k) => (
-              <option key={k} value={k}>
-                {KIND_LABEL[k]}
-              </option>
+              <Button
+                key={k}
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  setSections((xs) => [...xs, section(k)]);
+                  setFocusIdx(sections.length);
+                }}
+              >
+                <Plus className="h-4 w-4" aria-hidden /> {KIND_LABEL[k]}
+              </Button>
             ))}
-          </Select>
-          <Button variant="secondary" onClick={() => setSections((xs) => [...xs, section(addKind)])}>
-            <Plus className="h-4 w-4" aria-hidden /> Add section
-          </Button>
-        </div>
+          </div>
+        </Section>
 
-        {error && <Alert tone="error">{error}</Alert>}
-        <div className="flex gap-3 border-t border-slate-200 pt-6">
-          <Button type="submit" loading={busy}>
-            Create resume
-          </Button>
-          <Button variant="ghost" onClick={() => router.back()}>
-            Cancel
-          </Button>
+        <div className="sticky bottom-20 z-30 space-y-3 md:bottom-4">
+          {error && <Alert tone="error">{error}</Alert>}
+          <div className="flex gap-3 rounded-xl bg-white p-3 shadow-pop ring-1 ring-slate-900/5">
+            <Button type="submit" loading={busy}>
+              Create resume
+            </Button>
+            <Button variant="ghost" onClick={() => router.back()}>
+              Cancel
+            </Button>
+          </div>
         </div>
       </div>
     </form>
@@ -216,26 +264,27 @@ export function GuidedBuilder() {
 function BulletsEditor({ bullets, onChange, label = "Bullet points" }: { bullets: string[]; onChange: (b: string[]) => void; label?: string }) {
   return (
     <fieldset className="space-y-2">
-      <legend className="text-sm font-medium">{label}</legend>
+      <legend className="mb-2 text-sm font-medium">{label}</legend>
       {bullets.map((b, i) => (
-        <div key={i} className="flex items-start gap-2">
+        <div key={i} className="flex items-start gap-1">
           <Textarea
             className="flex-1"
-            rows={2}
+            autoGrow
+            rows={1}
             aria-label={`Bullet ${i + 1}`}
             value={b}
             placeholder="What you did, how, and the result. Use real numbers only."
             onChange={(e) => onChange(bullets.map((x, j) => (j === i ? e.target.value : x)))}
           />
-          <Button size="sm" variant="ghost" aria-label={`Move bullet ${i + 1} up`} disabled={i === 0} onClick={() => onChange(move(bullets, i, -1))}>
-            <ArrowUp className="h-4 w-4" />
-          </Button>
-          <Button size="sm" variant="ghost" aria-label={`Delete bullet ${i + 1}`} onClick={() => onChange(bullets.filter((_, j) => j !== i))}>
-            <Trash2 className="h-4 w-4" />
-          </Button>
+          <IconButton label={`Move bullet ${i + 1} up`} size="sm" className="mt-1.5" disabled={i === 0} onClick={() => onChange(move(bullets, i, -1))}>
+            <ArrowUp className="h-4 w-4" aria-hidden />
+          </IconButton>
+          <IconButton label={`Delete bullet ${i + 1}`} size="sm" className="mt-1.5" onClick={() => onChange(bullets.filter((_, j) => j !== i))}>
+            <Trash2 className="h-4 w-4" aria-hidden />
+          </IconButton>
         </div>
       ))}
-      <Button size="sm" variant="ghost" onClick={() => onChange([...bullets, ""])}>
+      <Button size="sm" variant="soft" onClick={() => onChange([...bullets, ""])}>
         <Plus className="h-4 w-4" aria-hidden /> Add bullet
       </Button>
     </fieldset>
@@ -271,7 +320,7 @@ function ItemEditor({ kind, item, onChange }: { kind: SectionKind; item: GuidedI
           <Input label="Start" value={it.start} onChange={(e) => onChange({ start: e.target.value })} />
           <Input label="End" value={it.end} onChange={(e) => onChange({ end: e.target.value })} />
         </div>
-        <Textarea className="sm:col-span-2" rows={2} label="Details (optional)" value={it.details} onChange={(e) => onChange({ details: e.target.value })} />
+        <Textarea className="sm:col-span-2" autoGrow rows={2} optional label="Details" value={it.details} onChange={(e) => onChange({ details: e.target.value })} />
       </div>
     );
   }
@@ -291,9 +340,9 @@ function ItemEditor({ kind, item, onChange }: { kind: SectionKind; item: GuidedI
       <div className="space-y-3">
         <div className="grid gap-3 sm:grid-cols-2">
           <Input label="Project name" value={it.name} onChange={(e) => onChange({ name: e.target.value })} />
-          <Input label="Link (optional)" type="url" value={it.link} onChange={(e) => onChange({ link: e.target.value })} />
+          <Input label="Link" optional type="url" value={it.link} onChange={(e) => onChange({ link: e.target.value })} />
         </div>
-        <Textarea rows={2} label="Description" value={it.description} onChange={(e) => onChange({ description: e.target.value })} />
+        <Textarea autoGrow rows={2} label="Description" value={it.description} onChange={(e) => onChange({ description: e.target.value })} />
         <BulletsEditor bullets={it.bullets} onChange={(bullets) => onChange({ bullets })} />
       </div>
     );
@@ -301,6 +350,7 @@ function ItemEditor({ kind, item, onChange }: { kind: SectionKind; item: GuidedI
   const it = item as TextItem;
   return (
     <Textarea
+      autoGrow
       rows={kind === "summary" ? 4 : 2}
       label={kind === "summary" ? "Professional summary" : kind === "skills" ? "Skills" : "Text"}
       hint={kind === "skills" ? "Comma separated, e.g. “Python, SQL, Stakeholder management”. Add a group per category." : undefined}

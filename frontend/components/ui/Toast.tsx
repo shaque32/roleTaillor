@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
 import { CheckCircle2, AlertCircle, Info, X } from "lucide-react";
+import { IconButton } from "./Button";
 import { cx } from "@/lib/format";
 
 type ToastTone = "success" | "error" | "info";
@@ -44,22 +45,21 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <Ctx.Provider value={api}>
       {children}
-      <div className="pointer-events-none fixed inset-x-0 bottom-4 z-50 flex flex-col items-center gap-2 px-4 sm:items-end sm:pr-6" aria-live="polite" role="status">
+      <div className="pointer-events-none fixed inset-x-0 bottom-20 z-50 md:bottom-4 flex flex-col items-center gap-2 px-4 sm:items-end sm:pr-6" aria-live="polite" role="status">
         {items.map((t) => {
           const Icon = t.tone === "success" ? CheckCircle2 : t.tone === "error" ? AlertCircle : Info;
           return (
             <div
               key={t.id}
               className={cx(
-                "pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-lg border bg-white px-4 py-3 text-sm shadow-lg",
-                t.tone === "error" ? "border-red-200" : "border-slate-200",
+                "pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-xl border-0 bg-white px-4 py-3 text-sm shadow-pop ring-1 ring-slate-900/5 animate-pop-in",
               )}
             >
               <Icon className={cx("mt-0.5 h-4 w-4 shrink-0", t.tone === "success" ? "text-emerald-600" : t.tone === "error" ? "text-red-600" : "text-brand-600")} aria-hidden />
-              <p className="flex-1 text-ink">{t.message}</p>
-              <button onClick={() => dismiss(t.id)} className="text-ink-faint hover:text-ink" aria-label="Dismiss notification">
-                <X className="h-4 w-4" />
-              </button>
+              <p className="flex-1 pt-0.5 text-ink" role={t.tone === "error" ? "alert" : undefined}>{t.message}</p>
+              <IconButton label="Dismiss notification" size="sm" onClick={() => dismiss(t.id)} className="-my-1 -mr-2">
+                <X className="h-4 w-4" aria-hidden />
+              </IconButton>
             </div>
           );
         })}

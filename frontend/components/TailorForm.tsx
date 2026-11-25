@@ -1,21 +1,27 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { ArrowRight, FileText, Link2, ShieldCheck } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { useResource } from "@/lib/hooks";
 import type { BillingStatus, ResumeVersionSummary } from "@/lib/types";
-import { formatDate, cx } from "@/lib/format";
-import { Alert, Button, Input, Select, Skeleton, Textarea, ButtonLink } from "@/components/ui";
+import { formatDate } from "@/lib/format";
+import { Alert, Button, ButtonLink, ChoiceCards, Disclosure, Input, Select, Skeleton, Textarea } from "@/components/ui";
+import { ConsentDialog } from "@/components/ConsentDialog";
 import { PaymentDialog } from "./PaymentDialog";
 
-type JobMode = "url" | "paste";
 const PAGE_OPTIONS = [
-  { value: 1, label: "1 page", hint: "Early career or concise" },
-  { value: 2, label: "2 pages", hint: "Recommended for most roles" },
-  { value: 3, label: "3+ pages", hint: "Senior, academic or federal" },
+  { value: "1", label: "1 page", description: "Early career or concise" },
+  {
+    value: "2",
+    label: "2 pages",
+    description: "Right for most roles",
+    badge: "Recommended",
+  },
+  { value: "3", label: "3+ pages", description: "Senior, academic or federal" },
 ];
+const MIN_DESCRIPTION = 80;
 
 export function TailorForm({ initialVersionId, defaultPageLimit = 2 }: { initialVersionId?: string; defaultPageLimit?: number }) {
   const router = useRouter();
@@ -23,10 +29,10 @@ export function TailorForm({ initialVersionId, defaultPageLimit = 2 }: { initial
   const [resumeId, setResumeId] = useState<string>("");
   const [versions, setVersions] = useState<ResumeVersionSummary[] | null>(null);
   const [versionId, setVersionId] = useState<string>(initialVersionId ?? "");
+  const [changing, setChanging] = useState(false);
+  const [pickVersion, setPickVersion] = useState(false);
 
-  const [jobMode, setJobMode] = useState<JobMode>("url");
-  const [jobUrl, setJobUrl] = useState("");
-  const [jobText, setJobText] = useState("");
+  const [jobInput, setJobInput] = useState("");
   const [title, setTitle] = useState("");
   const [company, setCompany] = useState("");
   const [pageLimit, setPageLimit] = useState(Math.min(3, Math.max(1, defaultPageLimit)));
@@ -35,9 +41,13 @@ export function TailorForm({ initialVersionId, defaultPageLimit = 2 }: { initial
   const [error, setError] = useState<React.ReactNode>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [payOpen, setPayOpen] = useState(false);
+  const [consentOpen, setConsentOpen] = useState(false);
   const [billing, setBilling] = useState<BillingStatus | null>(null);
   const jobCache = useRef<{ key: string; id: string } | null>(null);
-  const pasteRef = useRef<HTMLTextAreaElement>(null);
+  const jobRef = useRef<HTMLTextAreaElement>(null);
+
+  const trimmed = jobInput.trim();
+  const isUrl = /^https?:\/\/\S+$/i.test(trimmed);
 
   // Default selection: resume holding the initial version, else the first resume.
   useEffect(() => {
@@ -72,10 +82,11 @@ export function TailorForm({ initialVersionId, defaultPageLimit = 2 }: { initial
   }, [resumeId]);
 
   async function ensureJob(): Promise<string> {
-    const body =
-      jobMode === "url"
-        ? { source_url: jobUrl.trim(), title: title.trim() || undefined, company: company.trim() || undefined }
-        : { description: jobText.trim(), title: title.trim() || undefined, company: company.trim() || undefined };
+    const extra = {
+      title: title.trim() || undefined,
+      company: company.trim() || undefined,
+    };
+    const body = isUrl ? { source_url: trimmed, ...extra } : { description: trimmed, ...extra };
     const key = JSON.stringify(body);
     if (jobCache.current?.key === key) return jobCache.current.id;
     const job = await api.createJob(body);
@@ -87,8 +98,14 @@ export function TailorForm({ initialVersionId, defaultPageLimit = 2 }: { initial
     setError(null);
     setNotice(null);
     if (!versionId) return setError("Choose a resume to tailor.");
-    if (jobMode === "url" && !/^https?:\/\/\S+$/i.test(jobUrl.trim())) return setError("Enter the full job link, starting with https://");
-    if (jobMode === "paste" && jobText.trim().length < 80) return setError("Paste the full job description (at least a few sentences).");
+    if (!trimmed) {
+      jobRef.current?.focus();
+      return setError("Paste the job link or description.");
+    }
+    if (!isUrl && trimmed.length < MIN_DESCRIPTION) {
+      jobRef.current?.focus();
+      return setError("Paste the full job description (at least a few sentences).");
+    }
 
     setBusy(true);
     let jobId: string;
@@ -97,9 +114,9 @@ export function TailorForm({ initialVersionId, defaultPageLimit = 2 }: { initial
     } catch (e) {
       setBusy(false);
       if (e instanceof ApiError && e.code === "job_url_unreadable") {
-        setJobMode("paste");
-        setNotice("We couldn't read that job page (some sites block automated access). Please paste the job description instead.");
-        setTimeout(() => pasteRef.current?.focus(), 0);
+        setJobInput("");
+        setNotice("We couldn't read that page (some sites block us). Paste the job description text here instead.");
+        setTimeout(() => jobRef.current?.focus(), 0);
         return;
       }
       return setError(e instanceof Error ? e.message : "Couldn't save the job.");
@@ -107,7 +124,12 @@ export function TailorForm({ initialVersionId, defaultPageLimit = 2 }: { initial
 
     try {
       const wf = await api.createWorkflow(
-        { resume_version_id: versionId, job_posting_id: jobId, page_limit: pageLimit, accept_paid_usage: acceptPaid || undefined },
+        {
+          resume_version_id: versionId,
+          job_posting_id: jobId,
+          page_limit: pageLimit,
+          accept_paid_usage: acceptPaid || undefined,
+        },
         crypto.randomUUID(),
       );
       router.push(`/tailor/${wf.id}`);
@@ -120,14 +142,8 @@ export function TailorForm({ initialVersionId, defaultPageLimit = 2 }: { initial
         return;
       }
       if (e instanceof ApiError && e.status === 428) {
-        return setError(
-          <>
-            Before we can tailor, we need your consent for AI processing.{" "}
-            <Link href="/onboarding" className="font-medium underline">
-              Review and consent
-            </Link>
-          </>,
-        );
+        setConsentOpen(true);
+        return;
       }
       if (acceptPaid) throw e;
       setError(e instanceof Error ? e.message : "Couldn't start tailoring.");
@@ -143,124 +159,181 @@ export function TailorForm({ initialVersionId, defaultPageLimit = 2 }: { initial
     );
   }
   if (resumes.error) return <Alert tone="error">{resumes.error.message}</Alert>;
-  if (!resumes.data?.length) {
+  const list = resumes.data ?? [];
+  if (!list.length) {
     return (
-      <Alert tone="info" title="Add a resume first">
-        <div className="mt-2 flex gap-2">
-          <ButtonLink href="/resumes" size="sm">
-            Upload a resume
-          </ButtonLink>
-          <ButtonLink href="/resumes/new" size="sm" variant="secondary">
+      <div className="rounded-lg bg-surface-sunken px-5 py-6 text-center">
+        <h2 className="text-base font-semibold">Add a resume first</h2>
+        <p className="mt-1 text-sm text-ink-muted">Tailoring starts from a resume you already have, or one you build here.</p>
+        <div className="mt-4 flex flex-wrap justify-center gap-2">
+          <ButtonLink href="/resumes">Upload a resume</ButtonLink>
+          <ButtonLink href="/resumes/new" variant="secondary">
             Build one
           </ButtonLink>
         </div>
-      </Alert>
+      </div>
     );
   }
+
+  const current = list.find((r) => r.id === resumeId);
+  const selected = versions?.find((v) => v.id === versionId) ?? (current?.latest_version?.id === versionId ? current.latest_version : null);
+  const latestId = versions?.[0]?.id ?? current?.latest_version?.id;
+  const isLatest = Boolean(selected) && selected?.id === latestId;
+  const versionLabel = selected ? `v${selected.version_number} · ${formatDate(selected.created_at)}` : "";
+  const collapsed = (list.length === 1 || Boolean(initialVersionId)) && !changing;
+  const latestOf = (r: (typeof list)[number]) =>
+    r.latest_version ? `v${r.latest_version.version_number} · added ${formatDate(r.created_at)}` : `added ${formatDate(r.created_at)}`;
 
   return (
     <form
       className="space-y-8"
+      noValidate
       onSubmit={(e) => {
         e.preventDefault();
         void start(false);
       }}
     >
-      <fieldset className="space-y-4">
-        <legend className="text-sm font-semibold text-ink">1. Resume</legend>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Select label="Resume" value={resumeId} onChange={(e) => setResumeId(e.target.value)}>
-            {resumes.data.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.name}
-              </option>
-            ))}
-          </Select>
-          <Select label="Version" value={versionId} onChange={(e) => setVersionId(e.target.value)} disabled={!versions?.length}>
-            {versions === null && <option>Loading…</option>}
-            {versions?.map((v, i) => (
-              <option key={v.id} value={v.id}>
-                v{v.version_number} · {formatDate(v.created_at)}
-                {i === 0 ? " (latest)" : ""}
-              </option>
-            ))}
-          </Select>
-        </div>
-      </fieldset>
-
-      <fieldset className="space-y-4">
-        <legend className="text-sm font-semibold text-ink">2. Job</legend>
-        <div role="tablist" aria-label="How to add the job" className="inline-flex rounded-md border border-slate-200 bg-slate-50 p-0.5">
-          {(["url", "paste"] as const).map((m) => (
-            <button
-              key={m}
-              type="button"
-              role="tab"
-              aria-selected={jobMode === m}
-              onClick={() => setJobMode(m)}
-              className={cx("rounded px-3 py-1.5 text-sm", jobMode === m ? "bg-white font-medium shadow-sm" : "text-ink-muted")}
-            >
-              {m === "url" ? "Job link" : "Paste description"}
-            </button>
-          ))}
-        </div>
-        {notice && <Alert tone="warning">{notice}</Alert>}
-        {jobMode === "url" ? (
-          <Input
-            label="Job posting URL"
-            type="url"
-            inputMode="url"
-            placeholder="https://company.com/careers/role"
-            value={jobUrl}
-            onChange={(e) => setJobUrl(e.target.value)}
-          />
-        ) : (
+      <fieldset>
+        <legend className="mb-3 text-base font-semibold text-ink">The job</legend>
+        <div className="space-y-4">
+          {notice && <Alert tone="warning">{notice}</Alert>}
           <Textarea
-            ref={pasteRef}
-            label="Job description"
-            rows={10}
-            placeholder="Paste the full job description, including responsibilities and requirements."
-            value={jobText}
-            onChange={(e) => setJobText(e.target.value)}
+            ref={jobRef}
+            autoGrow
+            rows={3}
+            label="Job link or description"
+            placeholder="Paste a link (https://…) or the full job description"
+            value={jobInput}
+            onChange={(e) => setJobInput(e.target.value)}
           />
-        )}
-        <details className="group">
-          <summary className="cursor-pointer text-sm text-ink-muted hover:text-ink">Add role title and company (optional)</summary>
-          <div className="mt-3 grid gap-4 sm:grid-cols-2">
-            <Input label="Role title" value={title} onChange={(e) => setTitle(e.target.value)} />
-            <Input label="Company" value={company} onChange={(e) => setCompany(e.target.value)} />
-          </div>
-        </details>
+          <p aria-live="polite" className="-mt-2 flex items-center gap-1.5 text-sm text-ink-muted">
+            {!trimmed ? (
+              "Either works. A pasted description is the most reliable."
+            ) : isUrl ? (
+              <>
+                <Link2 className="h-4 w-4 shrink-0 text-brand-600" aria-hidden /> Link detected. We&apos;ll read the posting for you.
+              </>
+            ) : (
+              <>
+                Description · {trimmed.length.toLocaleString()} characters
+                {trimmed.length < MIN_DESCRIPTION && " · keep going, we need a few sentences"}
+              </>
+            )}
+          </p>
+          <Disclosure summary="Add role title and company (optional)">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Input label="Role title" value={title} onChange={(e) => setTitle(e.target.value)} />
+              <Input label="Company" value={company} onChange={(e) => setCompany(e.target.value)} />
+            </div>
+          </Disclosure>
+        </div>
       </fieldset>
 
       <fieldset>
-        <legend className="mb-3 text-sm font-semibold text-ink">3. Length</legend>
-        <div className="grid gap-2 sm:grid-cols-3">
-          {PAGE_OPTIONS.map((o) => (
-            <label
-              key={o.value}
-              className={cx(
-                "cursor-pointer rounded-md border px-4 py-3 text-sm focus-within:ring-2 focus-within:ring-brand-100",
-                pageLimit === o.value ? "border-brand-500 bg-brand-50" : "border-slate-200 bg-white hover:border-slate-300",
+        <legend className="mb-3 text-base font-semibold text-ink">Your resume</legend>
+        <div className="space-y-4">
+          {collapsed ? (
+            <div className="flex items-center gap-3 rounded-lg bg-surface-sunken px-4 py-3">
+              <FileText className="h-5 w-5 shrink-0 text-brand-600" aria-hidden />
+              <div className="min-w-0 flex-1">
+                <p className="break-words font-medium">{current?.name ?? "Resume"}</p>
+                {selected ? (
+                  <p className="text-sm text-ink-muted">{isLatest ? `Latest version (${versionLabel})` : `Version ${versionLabel}`}</p>
+                ) : (
+                  <Skeleton className="mt-1 h-4 w-40" />
+                )}
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => setChanging(true)}>
+                Change
+              </Button>
+            </div>
+          ) : (
+            <>
+              {list.length <= 4 ? (
+                <ChoiceCards
+                  columns={2}
+                  name="resume"
+                  label="Resume"
+                  value={resumeId}
+                  onChange={setResumeId}
+                  options={list.map((r) => ({
+                    value: r.id,
+                    label: r.name,
+                    description: latestOf(r),
+                  }))}
+                />
+              ) : (
+                <Select
+                  label="Resume"
+                  value={resumeId}
+                  onChange={setResumeId}
+                  options={list.map((r) => ({
+                    value: r.id,
+                    label: r.name,
+                    description: latestOf(r),
+                  }))}
+                />
               )}
-            >
-              <input type="radio" name="page_limit" value={o.value} checked={pageLimit === o.value} onChange={() => setPageLimit(o.value)} className="sr-only" />
-              <span className="block font-medium">{o.label}</span>
-              <span className="block text-xs text-ink-muted">{o.hint}</span>
-            </label>
-          ))}
+              {versions === null ? (
+                <Skeleton className="h-12" />
+              ) : (
+                <>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                    <p className="text-ink-muted">
+                      {isLatest ? `Using the latest version (v${selected?.version_number}).` : `Using ${versionLabel}.`}
+                    </p>
+                    {versions.length > 1 && !pickVersion && (
+                      <Button variant="ghost" size="sm" className="!text-brand-700" onClick={() => setPickVersion(true)}>
+                        Pick an older version
+                      </Button>
+                    )}
+                  </div>
+                  {pickVersion && versions.length > 1 && (
+                    <Select
+                      label="Version"
+                      value={versionId}
+                      onChange={setVersionId}
+                      options={versions.map((v, i) => ({
+                        value: v.id,
+                        label: `v${v.version_number} · ${formatDate(v.created_at)}`,
+                        description: i === 0 ? "Latest" : undefined,
+                      }))}
+                    />
+                  )}
+                </>
+              )}
+            </>
+          )}
         </div>
       </fieldset>
 
+      <ChoiceCards
+        columns={3}
+        name="page_limit"
+        label="Length"
+        value={String(pageLimit)}
+        onChange={(v) => setPageLimit(Number(v))}
+        options={PAGE_OPTIONS}
+      />
+
       {error && <Alert tone="error">{error}</Alert>}
-      <div className="flex flex-wrap items-center gap-4">
-        <Button type="submit" loading={busy}>
-          Start tailoring
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
+        <Button type="submit" size="lg" loading={busy} className="w-full sm:w-auto">
+          Start tailoring <ArrowRight className="h-4 w-4" aria-hidden />
         </Button>
-        <p className="text-xs text-ink-muted">We only rephrase what&apos;s already in your resume. Nothing is invented.</p>
+        <p className="flex items-start gap-1.5 text-sm text-ink-muted">
+          <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" aria-hidden />
+          We only rephrase what&apos;s already in your resume. Nothing is invented.
+        </p>
       </div>
 
       <PaymentDialog open={payOpen} onClose={() => setPayOpen(false)} billing={billing} onAccept={() => start(true)} />
+      <ConsentDialog
+        open={consentOpen}
+        onClose={() => setConsentOpen(false)}
+        onGranted={() => start(false)}
+        confirmLabel="Agree and start tailoring"
+      />
     </form>
   );
 }
