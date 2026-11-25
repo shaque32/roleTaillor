@@ -84,3 +84,15 @@ def test_keyword_gate_passes_only_backed_terms():
     sneaky = new.replace("cutting setup", "improving incident response and cutting setup")
     assert "facts.keywords" in rules(BlockContext("p1", orig, "bullet",
                                                   supported_terms=["infrastructure as code"]), sneaky)
+
+
+def test_switching_to_first_person_is_rejected():
+    from roletailor.domain.models import FactInventory
+    from roletailor.pipeline.validation.rules import BlockContext, DocContext, check_block
+
+    doc = DocContext(facts=FactInventory(), job=JobAnalysis(keywords=[]))
+    orig = "Chief Operating Officer with 15 years running logistics operations."
+    ctx = BlockContext(block_id="s", original=orig, scope="summary")
+    bad = check_block(ctx, "Chief Operating Officer with 15 years. I run logistics operations.", doc)
+    assert [v.rule_key for v in bad] == ["authenticity.phrases"]
+    assert not check_block(ctx, "Chief Operating Officer with 15 years leading logistics operations.", doc)

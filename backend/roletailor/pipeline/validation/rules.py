@@ -32,6 +32,9 @@ BANNED_PHRASES = [
 ]
 
 
+FIRST_PERSON = re.compile(r"\b(?:I|I'm|I've|[Mm]y|[Ww]e|[Oo]ur)\b")
+
+
 @dataclass
 class BlockContext:
     block_id: str
@@ -93,6 +96,9 @@ def check_block(ctx: BlockContext, new_text: str, doc: DocContext) -> list[Viola
     # authenticity.phrases
     lowered = new.lower()
     hits = [p for p in BANNED_PHRASES if p in lowered and p not in orig.lower()]
+    # A resume that does not say "I" must not start to: it reads as another writer.
+    if FIRST_PERSON.search(new) and not FIRST_PERSON.search(orig):
+        hits.append("first person (I, my, we, our)")
     if hits:
         out.append(Violation(rule_key="authenticity.phrases", block_id=bid,
                              detail=f"uses generic or AI-sounding phrases: {hits}"))
